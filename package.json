@@ -1,0 +1,33 @@
+{
+  "name": "avero-janze-erp",
+  "version": "1.0.0",
+  "description": "AVERO & Janze — Complete Retail ERP + POS System",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "telegram-bot"
+  ],
+  "scripts": {
+    "dev":           "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:bot\"",
+    "dev:backend":   "cd backend && npm run dev",
+    "dev:frontend":  "cd frontend && npm run dev",
+    "dev:bot":       "cd telegram-bot && npm run dev",
+    "build":         "cd backend && npm run build && cd ../frontend && npm run build",
+    "docker:up":     "docker compose up -d",
+    "docker:down":   "docker compose down",
+    "docker:build":  "docker compose build",
+    "docker:logs":   "docker compose logs -f",
+    "db:migrate":    "cd backend && npx prisma migrate dev",
+    "db:seed":       "cd backend && npx prisma db seed",
+    "db:studio":     "cd backend && npx prisma studio",
+    "setup":         "bash scripts/setup.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

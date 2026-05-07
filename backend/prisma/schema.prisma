@@ -1,0 +1,687 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Brand {
+  AVERO
+  JANZE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  CASHIER
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+  VOID
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  LOYALTY
+  DEBT
+}
+
+enum StockMovementType {
+  SALE
+  PURCHASE
+  TRANSFER
+  ADJUSTMENT
+  RETURN
+  WRITE_OFF
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+  CANCELLED
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+enum JournalEntrySource {
+  SALE
+  REFUND
+  EXPENSE
+  PURCHASE_ORDER
+  PAYROLL
+  ADJUSTMENT
+  BANK_TRANSFER
+  RECONCILIATION
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum CashFlowCategory {
+  OPERATING
+  INVESTING
+  FINANCING
+}
+
+enum ReconciliationStatus {
+  OPEN
+  CLOSED
+  BALANCED
+  DISCREPANCY
+  RESOLVED
+}
+
+enum SupplierPaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+}
+
+enum AccountSubtype {
+  CASH
+  BANK
+  ACCOUNTS_RECEIVABLE
+  INVENTORY
+  PREPAID
+  FIXED_ASSET
+  ACCOUNTS_PAYABLE
+  TAX_PAYABLE
+  LOAN
+  ACCRUED_LIABILITIES
+  OWNER_EQUITY
+  RETAINED_EARNINGS
+  SALES_REVENUE
+  OTHER_REVENUE
+  COST_OF_GOODS_SOLD
+  SALARIES
+  RENT
+  UTILITIES
+  MARKETING
+  TRANSPORT
+  MAINTENANCE
+  SUPPLIES
+  DEPRECIATION
+  OTHER_EXPENSE
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(100)
+  brand     Brand
+  address   String?  @db.Text
+  phone     String?  @db.VarChar(20)
+  currency  String   @default("UZS") @db.VarChar(3)
+  taxRate   Decimal  @default(12) @map("tax_rate") @db.Decimal(5, 2)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users      User[]
+  orders     Order[]
+  inventory  Inventory[]
+  expenses   Expense[]
+  budgets    Budget[]
+  recons     CashReconciliation[]
+
+  @@map("branches")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  branchId     String   @map("branch_id")
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole @default(CASHIER)
+  pin          String?  @db.VarChar(255)
+  isActive     Boolean  @default(true) @map("is_active")
+  lastLogin    DateTime? @map("last_login")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  branch         Branch         @relation(fields: [branchId], references: [id])
+  orders         Order[]
+  stockMovements StockMovement[]
+
+  @@index([branchId])
+  @@map("users")
+}
+
+model ProductCategory {
+  id       String  @id @default(uuid())
+  name     String  @db.VarChar(100)
+  brand    Brand?
+  isActive Boolean @default(true) @map("is_active")
+  products Product[]
+  @@map("product_categories")
+}
+
+model Product {
+  id               String   @id @default(uuid())
+  categoryId       String?  @map("category_id")
+  brand            Brand
+  name             String   @db.VarChar(200)
+  description      String?  @db.Text
+  skuBase          String   @map("sku_base") @db.VarChar(50)
+  costPrice        Decimal  @map("cost_price") @db.Decimal(14, 2)
+  sellPrice        Decimal  @map("sell_price") @db.Decimal(14, 2)
+  isFlexiblePrice  Boolean  @default(false) @map("is_flexible_price")
+  imageUrls        String[] @map("image_urls")
+  tags             String[]
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  category ProductCategory? @relation(fields: [categoryId], references: [id])
+  variants ProductVariant[]
+
+  @@index([brand])
+  @@map("products")
+}
+
+model ProductVariant {
+  id            String   @id @default(uuid())
+  productId     String   @map("product_id")
+  sku           String   @unique @db.VarChar(80)
+  barcode       String?  @unique @db.VarChar(50)
+  size          String?  @db.VarChar(20)
+  color         String?  @db.VarChar(50)
+  colorHex      String?  @map("color_hex") @db.VarChar(7)
+  priceOverride Decimal? @map("price_override") @db.Decimal(14, 2)
+  isActive      Boolean  @default(true) @map("is_active")
+
+  product    Product         @relation(fields: [productId], references: [id])
+  inventory  Inventory[]
+  orderItems OrderItem[]
+  movements  StockMovement[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model Inventory {
+  id                String   @id @default(uuid())
+  variantId         String   @map("variant_id")
+  branchId          String   @map("branch_id")
+  quantity          Int      @default(0)
+  reservedQty       Int      @default(0) @map("reserved_qty")
+  lowStockThreshold Int      @default(5) @map("low_stock_threshold")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+  branch  Branch         @relation(fields: [branchId], references: [id])
+
+  @@unique([variantId, branchId])
+  @@index([branchId])
+  @@map("inventory")
+}
+
+model StockMovement {
+  id           String            @id @default(uuid())
+  variantId    String            @map("variant_id")
+  fromBranchId String?           @map("from_branch_id")
+  toBranchId   String?           @map("to_branch_id")
+  type         StockMovementType
+  quantity     Int
+  note         String?           @db.Text
+  userId       String            @map("user_id")
+  referenceId  String?           @map("reference_id")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+  user    User           @relation(fields: [userId], references: [id])
+
+  @@index([variantId])
+  @@map("stock_movements")
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  name          String   @db.VarChar(100)
+  phone         String   @unique @db.VarChar(20)
+  email         String?  @db.VarChar(255)
+  loyaltyPoints Int      @default(0) @map("loyalty_points")
+  discountPct   Decimal  @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  totalSpent    Decimal  @default(0) @map("total_spent") @db.Decimal(14, 2)
+  totalOrders   Int      @default(0) @map("total_orders")
+  birthday      DateTime? @db.Date
+  address       String?   @db.VarChar(300)
+  segment       String    @default("REGULAR") @db.VarChar(20)
+  tags          String[]
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  orders         Order[]
+  loyaltyHistory LoyaltyTransaction[]
+  debts          Debt[]
+
+  @@index([phone])
+  @@index([segment])
+  @@map("customers")
+}
+
+model LoyaltyTransaction {
+  id          String   @id @default(uuid())
+  customerId  String   @map("customer_id")
+  type        String   @db.VarChar(10)
+  points      Int
+  description String   @db.VarChar(300)
+  orderId     String?  @map("order_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+  @@map("loyalty_transactions")
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @unique @map("order_number") @db.VarChar(30)
+  branchId      String      @map("branch_id")
+  cashierId     String      @map("cashier_id")
+  customerId    String?     @map("customer_id")
+  subtotal      Decimal     @db.Decimal(14, 2)
+  discountTotal Decimal     @default(0) @map("discount_total") @db.Decimal(14, 2)
+  taxTotal      Decimal     @default(0) @map("tax_total") @db.Decimal(14, 2)
+  total         Decimal     @db.Decimal(14, 2)
+  status        OrderStatus @default(COMPLETED)
+  source        String      @default("ORDER") @db.VarChar(10)
+  offlineId     String?     @unique @map("offline_id") @db.VarChar(50)
+  notes         String?     @db.Text
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  cashier  User      @relation(fields: [cashierId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+  payments Payment[]
+
+  @@index([branchId])
+  @@index([cashierId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String  @id @default(uuid())
+  orderId       String  @map("order_id")
+  variantId     String  @map("variant_id")
+  quantity      Int
+  unitPrice     Decimal @map("unit_price") @db.Decimal(14, 2)
+  unitCost      Decimal @map("unit_cost") @db.Decimal(14, 2)
+  discountPct   Decimal @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  discountFixed Decimal @default(0) @map("discount_fixed") @db.Decimal(14, 2)
+  lineTotal     Decimal @map("line_total") @db.Decimal(14, 2)
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  orderId   String        @map("order_id")
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(14, 2)
+  reference String?       @db.VarChar(100)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(200)
+  contactName String?  @map("contact_name") @db.VarChar(100)
+  phone       String?  @db.VarChar(20)
+  email       String?  @db.VarChar(255)
+  country     String?  @db.VarChar(50)
+  balance     Decimal  @default(0) @db.Decimal(14, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id           String                @id @default(uuid())
+  supplierId   String                @map("supplier_id")
+  orderNumber  String                @unique @map("order_number") @db.VarChar(30)
+  totalAmount  Decimal               @map("total_amount") @db.Decimal(14, 2)
+  paidAmount   Decimal               @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  status       SupplierPaymentStatus @default(PENDING)
+  expectedDate DateTime?             @map("expected_date") @db.Date
+  receivedDate DateTime?             @map("received_date") @db.Date
+  notes        String?               @db.Text
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId])
+  @@map("purchase_orders")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique @db.Text
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model FinanceAccount {
+  id          String         @id @default(uuid())
+  code        String         @unique @db.VarChar(20)
+  name        String         @db.VarChar(200)
+  type        AccountType
+  subtype     AccountSubtype
+  parentId    String?        @map("parent_id")
+  branchId    String?        @map("branch_id")
+  currency    String         @default("UZS") @db.VarChar(3)
+  isActive    Boolean        @default(true) @map("is_active")
+  description String?        @db.Text
+  sortOrder   Int            @default(0) @map("sort_order")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  parent      FinanceAccount?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children    FinanceAccount[] @relation("AccountHierarchy")
+  debitLines  JournalLine[]    @relation("DebitAccount")
+  creditLines JournalLine[]    @relation("CreditAccount")
+  budgetLines BudgetLine[]
+  expenses    Expense[]
+
+  @@index([type])
+  @@map("finance_accounts")
+}
+
+model JournalEntry {
+  id            String             @id @default(uuid())
+  entryNumber   String             @unique @db.VarChar(30) @map("entry_number")
+  branchId      String             @map("branch_id")
+  date          DateTime           @db.Date
+  description   String             @db.VarChar(500)
+  status        JournalEntryStatus @default(DRAFT)
+  source        JournalEntrySource
+  referenceId   String?            @map("reference_id")
+  referenceType String?            @map("reference_type") @db.VarChar(50)
+  currency      String             @default("UZS") @db.VarChar(3)
+  postedAt      DateTime?          @map("posted_at")
+  postedBy      String?            @map("posted_by")
+  voidedAt      DateTime?          @map("voided_at")
+  voidedBy      String?            @map("voided_by") @db.VarChar(255)
+  voidReason    String?            @map("void_reason") @db.Text
+  notes         String?            @db.Text
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  lines JournalLine[]
+
+  @@index([branchId])
+  @@index([date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id              String   @id @default(uuid())
+  journalId       String   @map("journal_id")
+  debitAccountId  String?  @map("debit_account_id")
+  creditAccountId String?  @map("credit_account_id")
+  amountTiyin     BigInt   @map("amount_tiyin")
+  description     String?  @db.VarChar(300)
+  taxAmount       BigInt   @default(0) @map("tax_amount")
+  lineOrder       Int      @default(0) @map("line_order")
+
+  journal       JournalEntry    @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  debitAccount  FinanceAccount? @relation("DebitAccount",  fields: [debitAccountId],  references: [id])
+  creditAccount FinanceAccount? @relation("CreditAccount", fields: [creditAccountId], references: [id])
+
+  @@index([journalId])
+  @@map("journal_lines")
+}
+
+model Expense {
+  id               String           @id @default(uuid())
+  expenseNumber    String           @unique @map("expense_number") @db.VarChar(30)
+  branchId         String           @map("branch_id")
+  accountId        String           @map("account_id")
+  submittedBy      String           @map("submitted_by")
+  approvedBy       String?          @map("approved_by")
+  description      String           @db.Text
+  amountTiyin      BigInt           @map("amount_tiyin")
+  taxAmountTiyin   BigInt           @default(0) @map("tax_amount_tiyin")
+  currency         String           @default("UZS") @db.VarChar(3)
+  status           ExpenseStatus    @default(PENDING)
+  category         String           @db.VarChar(100)
+  cashFlowCategory CashFlowCategory @default(OPERATING) @map("cash_flow_category")
+  receiptUrl       String?          @map("receipt_url") @db.Text
+  notes            String?          @db.Text
+  expenseDate      DateTime         @map("expense_date") @db.Date
+  paidBy           String?          @map("paid_by") @db.VarChar(255)
+  paidAt           DateTime?        @map("paid_at")
+  approvedAt       DateTime?        @map("approved_at")
+  journalId        String?          @unique @map("journal_id")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  branch  Branch         @relation(fields: [branchId],  references: [id])
+  account FinanceAccount @relation(fields: [accountId], references: [id])
+
+  @@index([branchId])
+  @@index([status])
+  @@map("expenses")
+}
+
+model Budget {
+  id          String       @id @default(uuid())
+  branchId    String?      @map("branch_id")
+  name        String       @db.VarChar(200)
+  period      BudgetPeriod
+  periodStart DateTime     @map("period_start") @db.Date
+  periodEnd   DateTime     @map("period_end") @db.Date
+  currency    String       @default("UZS") @db.VarChar(3)
+  isActive    Boolean      @default(true) @map("is_active")
+  createdBy   String       @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  branch Branch? @relation(fields: [branchId], references: [id])
+  lines  BudgetLine[]
+
+  @@map("budgets")
+}
+
+model BudgetLine {
+  id            String @id @default(uuid())
+  budgetId      String @map("budget_id")
+  accountId     String @map("account_id")
+  budgetedTiyin BigInt @map("budgeted_tiyin")
+  notes         String? @db.VarChar(300)
+
+  budget  Budget         @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  account FinanceAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([budgetId, accountId])
+  @@map("budget_lines")
+}
+
+model CashReconciliation {
+  id              String               @id @default(uuid())
+  branchId        String               @map("branch_id")
+  cashierId       String               @map("cashier_id")
+  shiftDate       DateTime             @map("shift_date") @db.Date
+  shiftStart      DateTime             @map("shift_start")
+  shiftEnd        DateTime?            @map("shift_end")
+  openingCash     BigInt               @map("opening_cash")
+  expectedCash    BigInt?              @map("expected_cash")
+  countedCash     BigInt?              @map("counted_cash")
+  differenceTiyin BigInt?              @map("difference_tiyin")
+  status          ReconciliationStatus @default(OPEN)
+  discrepancyNote String?              @map("discrepancy_note") @db.Text
+  resolvedAt      DateTime?            @map("resolved_at")
+  resolvedBy      String?              @map("resolved_by")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
+  @@map("cash_reconciliations")
+}
+
+model BotAdmin {
+  id               Int      @id @default(autoincrement())
+  telegramId       String   @unique @map("telegram_id") @db.VarChar(20)
+  telegramUsername String?  @map("telegram_username") @db.VarChar(100)
+  name             String   @db.VarChar(100)
+  branchId         String?  @map("branch_id")
+  role             String   @default("MANAGER") @db.VarChar(20)
+  isActive         Boolean  @default(true) @map("is_active")
+  notifyDailyReport  Boolean @default(true) @map("notify_daily_report")
+  notifyLowStock     Boolean @default(true) @map("notify_low_stock")
+  notifyLargeOrders  Boolean @default(true) @map("notify_large_orders")
+  registeredAt     DateTime @default(now()) @map("registered_at")
+  lastActiveAt     DateTime? @map("last_active_at")
+
+  @@map("bot_admins")
+}
+
+model Discount {
+  id          String    @id @default(cuid())
+  name        String    @db.VarChar(100)
+  code        String?   @unique @db.VarChar(50)
+  type        String    @default("PERCENTAGE") @db.VarChar(20)
+  value       Decimal   @db.Decimal(14, 2)
+  minOrder    Decimal?  @map("min_order") @db.Decimal(14, 2)
+  maxUses     Int?      @map("max_uses")
+  usedCount   Int       @default(0) @map("used_count")
+  startsAt    DateTime? @map("starts_at")
+  endsAt      DateTime? @map("ends_at")
+  description String?   @db.VarChar(500)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("discounts")
+}
+
+// ── Debt Management ────────────────────────────────────────────────────────────
+model Debt {
+  id          String    @id @default(cuid())
+  customerId  String?   @map("customer_id")
+  customerName String   @map("customer_name") @db.VarChar(100)
+  phone       String?   @db.VarChar(20)
+  amount      Decimal   @db.Decimal(14, 2)
+  paid        Decimal   @default(0) @db.Decimal(14, 2)
+  currency    String    @default("UZS") @db.VarChar(10)
+  dueDate     DateTime? @map("due_date")
+  status      String    @default("UNPAID") @db.VarChar(20)
+  description String?   @db.VarChar(500)
+  notes       String?   @db.Text
+  branchId    String?   @map("branch_id")
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  customer  Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  payments  DebtPayment[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("debts")
+}
+
+model DebtPayment {
+  id        String   @id @default(cuid())
+  debtId    String   @map("debt_id")
+  amount    Decimal  @db.Decimal(14, 2)
+  method    String   @default("CASH") @db.VarChar(20)
+  paidAt    DateTime @default(now()) @map("paid_at")
+  notes     String?  @db.VarChar(300)
+  createdBy String?  @map("created_by")
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([debtId])
+  @@map("debt_payments")
+}
+
+// ── Employee Management ────────────────────────────────────────────────────────
+model Employee {
+  id        String    @id @default(cuid())
+  name      String    @db.VarChar(100)
+  role      String    @default("CASHIER") @db.VarChar(20)
+  phone     String?   @db.VarChar(20)
+  email     String?   @db.VarChar(255)
+  salary    Decimal?  @db.Decimal(14, 2)
+  branchId  String?   @map("branch_id")
+  hireDate  DateTime? @db.Date @map("hire_date")
+  isActive  Boolean   @default(true) @map("is_active")
+  notes     String?   @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  attendance AttendanceLog[]
+
+  @@index([branchId])
+  @@map("employees")
+}
+
+model AttendanceLog {
+  id          String    @id @default(cuid())
+  employeeId  String    @map("employee_id")
+  checkIn     DateTime  @default(now()) @map("check_in")
+  checkOut    DateTime? @map("check_out")
+  hoursWorked Decimal?  @map("hours_worked") @db.Decimal(5, 2)
+  status      String    @default("PRESENT") @db.VarChar(20)
+  notes       String?   @db.VarChar(300)
+  date        DateTime  @db.Date @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([date])
+  @@map("attendance_logs")
+}

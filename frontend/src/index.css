@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TOKENS — each [data-theme] block defines the full palette.
+   Colors stored as RGB channels so Tailwind opacity modifiers work:
+     bg-gold/20  → rgba(var(--color-gold), 0.20)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Dark (default) ─────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg:       6   6  15;
+  --color-surface:  15  16  24;
+  --color-surface2: 22  25  33;
+  --color-border:   31  35  48;
+  --color-gold:     200 145 42;
+  --color-gold-dim: rgba(200,145,42,0.12);
+  --color-jade:     62  207 142;
+  --color-rose:     240 93  115;
+  --color-muted:    107 114 128;
+  --color-fg:       232 236 240;
+
+  --scrollbar-thumb: rgba(255,255,255,0.10);
+  --toaster-bg:      #161921;
+  --toaster-border:  #1f2330;
+  --toaster-color:   #fff;
+}
+
+/* ── Light ──────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-bg:       248 249 252;
+  --color-surface:  255 255 255;
+  --color-surface2: 241 243 248;
+  --color-border:   218 220 232;
+  --color-gold:     79  70  229;     /* indigo accent */
+  --color-gold-dim: rgba(79,70,229,0.10);
+  --color-jade:     22  163 74;
+  --color-rose:     220 38  38;
+  --color-muted:    100 116 139;
+  --color-fg:       15  23  42;
+
+  --scrollbar-thumb: rgba(0,0,0,0.15);
+  --toaster-bg:      #ffffff;
+  --toaster-border:  #e2e3ea;
+  --toaster-color:   #0f172a;
+}
+
+/* ── Neon / Cyberpunk ───────────────────────────────────────────────────── */
+[data-theme="neon"] {
+  color-scheme: dark;
+  --color-bg:       0   0   0;
+  --color-surface:  10  10  10;
+  --color-surface2: 18  18  18;
+  --color-border:   0   255 65;
+  --color-gold:     0   255 65;
+  --color-gold-dim: rgba(0,255,65,0.10);
+  --color-jade:     0   255 65;
+  --color-rose:     255 0   80;
+  --color-muted:    80  120 80;
+  --color-fg:       200 255 200;
+
+  --scrollbar-thumb: rgba(0,255,65,0.25);
+  --toaster-bg:      #0a0a0a;
+  --toaster-border:  rgba(0,255,65,0.4);
+  --toaster-color:   #c8ffc8;
+}
+
+/* ── Luxury / Royal ─────────────────────────────────────────────────────── */
+[data-theme="luxury"] {
+  color-scheme: dark;
+  --color-bg:       8   4  18;
+  --color-surface:  18  10  35;
+  --color-surface2: 30  18  55;
+  --color-border:   65  45 110;
+  --color-gold:     212 175 55;
+  --color-gold-dim: rgba(212,175,55,0.12);
+  --color-jade:     139 92 246;      /* violet for "success" in luxury */
+  --color-rose:     236 72  153;
+  --color-muted:    130 110 170;
+  --color-fg:       240 230 255;
+
+  --scrollbar-thumb: rgba(212,175,55,0.20);
+  --toaster-bg:      #120a23;
+  --toaster-border:  rgba(212,175,55,0.3);
+  --toaster-color:   #f0e6ff;
+}
+
+/* ── Minimal ────────────────────────────────────────────────────────────── */
+[data-theme="minimal"] {
+  color-scheme: light;
+  --color-bg:       250 250 252;
+  --color-surface:  255 255 255;
+  --color-surface2: 244 244 248;
+  --color-border:   226 226 234;
+  --color-gold:     59  130 246;     /* blue accent */
+  --color-gold-dim: rgba(59,130,246,0.10);
+  --color-jade:     16  185 129;
+  --color-rose:     239 68  68;
+  --color-muted:    148 163 184;
+  --color-fg:       30  41  59;
+
+  --scrollbar-thumb: rgba(0,0,0,0.12);
+  --toaster-bg:      #ffffff;
+  --toaster-border:  #e2e6ea;
+  --toaster-color:   #1e293b;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL RESET
+   ═══════════════════════════════════════════════════════════════════════════ */
+* { box-sizing: border-box; }
+
+body {
+  background: rgb(var(--color-bg));
+  color:       rgb(var(--color-fg));
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition:  background 0.25s ease, color 0.25s ease;
+}
+
+/* Light themes need to override `text-white` (used pervasively for dark themes) */
+[data-theme="light"] .text-white,
+[data-theme="minimal"] .text-white {
+  color: rgb(var(--color-fg)) !important;
+}
+
+/* Light themes – invert the "white" border/divide colour in tables/cards */
+[data-theme="light"] .border-border,
+[data-theme="minimal"] .border-border {
+  border-color: rgb(var(--color-border)) !important;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb {
+  background:    var(--scrollbar-thumb);
+  border-radius: 99px;
+}
+
+/* ── Smooth theme transition on all background/border/color props ───────── */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 0.18s;
+  transition-timing-function: ease;
+}
+/* But NOT transform / opacity / width / height etc. (would break animations) */
+[class*="transition-"], [class*="animate-"] {
+  transition-property: revert;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT CLASSES
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* Form label — used everywhere as <label className="label"> */
+  .label {
+    @apply block text-xs font-medium text-muted mb-1;
+  }
+
+  .btn-primary {
+    @apply bg-gold hover:bg-gold/90 text-bg font-semibold px-4 py-2 rounded-lg text-sm;
+    transition: background-color 0.15s, opacity 0.15s;
+  }
+  .btn-secondary {
+    @apply bg-surface2 hover:bg-surface2/80 text-fg border border-border px-4 py-2 rounded-lg text-sm;
+    transition: background-color 0.15s;
+  }
+  .card {
+    @apply bg-surface border border-border rounded-xl p-4;
+  }
+  .input {
+    @apply w-full bg-surface2 border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder-muted focus:outline-none focus:border-gold;
+    transition: border-color 0.15s;
+  }
+}
+
+/* ── Neon-theme glow accents ─────────────────────────────────────────────── */
+[data-theme="neon"] .card {
+  box-shadow: 0 0 0 1px rgba(0,255,65,0.15), 0 2px 20px rgba(0,255,65,0.04);
+}
+[data-theme="neon"] .btn-primary {
+  box-shadow: 0 0 12px rgba(0,255,65,0.4);
+  text-shadow: 0 0 8px rgba(0,255,65,0.6);
+}
+[data-theme="neon"] a[class*="bg-gold-dim"],
+[data-theme="neon"] [class*="bg-gold-dim"] {
+  box-shadow: 0 0 8px rgba(0,255,65,0.2);
+}
+
+/* ── Luxury shimmer on active nav ───────────────────────────────────────── */
+[data-theme="luxury"] a[class*="bg-gold-dim"] {
+  background: linear-gradient(90deg, rgba(212,175,55,0.15), rgba(139,92,246,0.08)) !important;
+  border-left: 2px solid rgb(212,175,55);
+}
