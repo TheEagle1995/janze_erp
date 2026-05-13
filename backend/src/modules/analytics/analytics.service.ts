@@ -317,7 +317,7 @@ export class AnalyticsService {
       where:  { id: { in: branchIds } },
       select: { id: true, name: true, brand: true },
     })
-    const branchMap = new Map(branches.map(b => [b.id, b]))
+    const branchMap = new Map<string, { id: string; name: string; brand: string }>(branches.map(b => [b.id, b] as [string, typeof b]))
 
     return grouped.map(g => ({
       branchId:   g.branchId,

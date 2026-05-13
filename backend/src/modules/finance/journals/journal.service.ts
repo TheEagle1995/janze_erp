@@ -226,9 +226,9 @@ export class JournalService {
         (!branchId || j.journal.branchId === branchId)
 
       const debits  = acc.debitLines.filter(filterJournal)
-        .reduce((s, l) => s + l.amountTiyin, BigInt(0))
+        .reduce<bigint>((s, l) => s + l.amountTiyin, BigInt(0))
       const credits = acc.creditLines.filter(filterJournal)
-        .reduce((s, l) => s + l.amountTiyin, BigInt(0))
+        .reduce<bigint>((s, l) => s + l.amountTiyin, BigInt(0))
 
       const isDebitNormal = ['ASSET', 'EXPENSE'].includes(acc.type)
       const balance = isDebitNormal
@@ -262,7 +262,7 @@ export class JournalService {
     const accounts = await this.prisma.financeAccount.findMany({
       where: { code: { in: accountCodes }, isActive: true },
     })
-    const am = new Map(accounts.map(a => [a.code, a]))
+    const am = new Map<string, (typeof accounts)[number]>(accounts.map(a => [a.code, a] as [string, (typeof accounts)[number]]))
 
     const revenueCode   = params.brand === 'AVERO' ? '4001' : '4002'
     const cogsCode      = params.brand === 'AVERO' ? '5001' : '5002'
