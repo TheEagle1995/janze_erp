@@ -16,10 +16,16 @@ async function bootstrap() {
   // Security
   app.use(helmet())
   app.use(compression())
-  app.enableCors({
-    origin:      process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'],
-    credentials: true,
-  })
+  // Production frontend + localhost are always allowed; CORS_ORIGINS env can extend this list
+  const productionOrigins = [
+    'https://janze-erp-frontend.vercel.app',
+    'https://janze-erp-frontend-nuriddinovabrorbek321-4949s-projects.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ]
+  const extraOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) ?? []
+  const allowedOrigins = [...new Set([...productionOrigins, ...extraOrigins])]
+  app.enableCors({ origin: allowedOrigins, credentials: true })
 
   // Global prefix
   app.setGlobalPrefix('api/v1')
