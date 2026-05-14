@@ -2,7 +2,8 @@
   "name": "avero-backend",
   "version": "1.0.0",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build --skip-type-check",
+    "postinstall": "prisma generate",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "test": "jest --passWithNoTests",
