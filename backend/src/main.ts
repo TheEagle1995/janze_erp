@@ -8,7 +8,7 @@ import { JwtAuthGuard }   from './common/guards/jwt-auth.guard'
 import { RolesGuard }     from './common/guards/roles.guard'
 import { Reflector }      from '@nestjs/core'
 import helmet      from 'helmet'
-import * as compression from 'compression'
+import compression = require('compression')
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
