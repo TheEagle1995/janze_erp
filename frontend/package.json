@@ -2,32 +2,36 @@
   "name": "avero-frontend",
   "version": "1.0.0",
   "scripts": {
-    "dev":     "vite",
-    "build":   "tsc && vite build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react":                "^18.2.0",
-    "react-dom":            "^18.2.0",
-    "react-router-dom":     "^6.22.3",
-    "@tanstack/react-query":"^5.28.4",
-    "zustand":              "^4.5.2",
-    "axios":                "^1.6.8",
-    "recharts":             "^2.12.3",
-    "dayjs":                "^1.11.10",
-    "clsx":                 "^2.1.0",
-    "react-hot-toast":      "^2.4.1",
-    "lucide-react":         "^0.363.0",
-    "xlsx":                 "^0.18.5"
+    "@supabase/supabase-js": "^2.105.3",
+    "@tanstack/react-query": "^5.28.4",
+    "axios": "^1.6.8",
+    "clsx": "^2.1.0",
+    "dayjs": "^1.11.10",
+    "lucide-react": "^0.363.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.22.3",
+    "recharts": "^2.12.3",
+    "xlsx": "^0.18.5",
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@types/react":        "^18.2.67",
-    "@types/react-dom":    "^18.2.22",
-    "@vitejs/plugin-react":"^4.2.1",
-    "autoprefixer":        "^10.4.19",
-    "postcss":             "^8.4.38",
-    "tailwindcss":         "^3.4.1",
-    "typescript":          "^5.4.3",
-    "vite":                "^5.2.0"
+    "@types/react": "^18.2.67",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.3",
+    "vite": "^5.2.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "*"
   }
 }

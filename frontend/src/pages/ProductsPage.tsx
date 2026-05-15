@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { productsApi } from '../lib/api'
 import { useState } from 'react'
 import { PageHeader, Badge, EmptyState, fmt } from '../components/Shared'
-import { Plus, Search, Edit2, Trash2, X, Loader2, RefreshCw, ImageIcon, Package } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X, Loader2, RefreshCw, Camera, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const EMPTY_VARIANT = { sku: '', barcode: '', size: '', color: '', colorHex: '', priceOverride: '' }
@@ -264,7 +264,7 @@ export default function ProductsPage() {
               <div className="w-44 flex-shrink-0 border-r border-border p-5 flex flex-col gap-4">
                 <div className="aspect-square bg-bg border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-gold/40 transition-colors group">
                   <div className="w-10 h-10 rounded-full bg-surface2 flex items-center justify-center group-hover:bg-gold/10 transition-colors">
-                    <ImageIcon size={18} className="text-muted group-hover:text-gold transition-colors" />
+                    <Camera size={18} className="text-muted group-hover:text-gold transition-colors" />
                   </div>
                   <span className="text-xs text-muted text-center leading-tight px-2">Rasm<br/>yuklash</span>
                 </div>
