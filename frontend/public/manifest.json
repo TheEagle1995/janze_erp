@@ -1,0 +1,49 @@
+{
+  "name": "Janze ERP",
+  "short_name": "Janze",
+  "description": "Fashion Retail Management System — Inventory, Sales, Analytics & Finance for modern retail brands.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f13",
+  "theme_color": "#d4a85a",
+  "orientation": "landscape",
+  "lang": "uz",
+  "dir": "ltr",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.svg",
+      "sizes": "1200x630",
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "Janze ERP Dashboard"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

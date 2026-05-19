@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e1e24"/>
+      <stop offset="100%" stop-color="#0f0f13"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0d482"/>
+      <stop offset="50%" stop-color="#d4a85a"/>
+      <stop offset="100%" stop-color="#a8732a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="96" fill="none" stroke="#d4a85a" stroke-width="1.5" stroke-opacity="0.3"/>
+  <!-- J vertical -->
+  <rect x="266" y="110" width="46" height="250" rx="8" fill="url(#gold)"/>
+  <!-- J top serif -->
+  <rect x="200" y="110" width="116" height="36" rx="8" fill="url(#gold)"/>
+  <!-- J curve bottom -->
+  <path d="M 312 358 Q 312 454 216 454 Q 156 454 156 410 L 156 394 Q 156 370 176 370 L 200 370 Q 224 370 224 394 L 224 406 Q 224 428 216 428 Q 252 428 276 404 Q 296 382 298 360 Z" fill="url(#gold)"/>
+  <!-- Diamond accent -->
+  <path d="M 256 474 L 268 490 L 256 506 L 244 490 Z" fill="#d4a85a" fill-opacity="0.35"/>
+</svg>

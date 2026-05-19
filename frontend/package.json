@@ -1,5 +1,5 @@
 {
-  "name": "avero-frontend",
+  "name": "janze-erp-frontend",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
