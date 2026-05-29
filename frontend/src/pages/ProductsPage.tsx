@@ -194,7 +194,22 @@ export default function ProductsPage() {
                   <td className="px-4 py-3 font-mono text-xs text-muted">{p.skuBase}</td>
                   <td className="px-4 py-3 text-right font-mono text-xs text-muted">{fmt(p.costPrice)}</td>
                   <td className="px-4 py-3 text-right font-mono text-sm text-gold">{fmt(p.sellPrice)}</td>
-                  <td className="px-4 py-3 text-muted text-xs">{p.variants?.length ?? 0}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {p.variants?.slice(0, 4).map((v: any) => (
+                        <span key={v.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface2 border border-border text-xs text-muted font-mono">
+                          {v.colorHex && (
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: v.colorHex }} />
+                          )}
+                          {[v.size, v.color].filter(Boolean).join('/') || v.sku?.split('-').pop() || '—'}
+                        </span>
+                      ))}
+                      {(p.variants?.length ?? 0) > 4 && (
+                        <span className="text-xs text-muted">+{p.variants.length - 4}</span>
+                      )}
+                      {!(p.variants?.length) && <span className="text-xs text-muted">—</span>}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <Badge color={p.isActive ? 'green' : 'red'}>{p.isActive ? 'Faol' : 'Nofaol'}</Badge>
                   </td>
@@ -444,11 +459,12 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Variant column headers */}
-                  <div className="grid grid-cols-12 gap-2 px-1 mb-1.5">
+                  <div className="grid gap-2 px-1 mb-1.5" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
                     <span className="col-span-3 text-xs text-muted/70">SKU *</span>
-                    <span className="col-span-4 text-xs text-muted/70">Barkod (EAN-13)</span>
+                    <span className="col-span-3 text-xs text-muted/70">Barkod (EAN-13)</span>
                     <span className="col-span-2 text-xs text-muted/70">O'lcham</span>
                     <span className="col-span-2 text-xs text-muted/70">Rang</span>
+                    <span className="col-span-2 text-xs text-muted/70">Alohida narx</span>
                     <span className="col-span-1" />
                   </div>
 
@@ -456,7 +472,8 @@ export default function ProductsPage() {
                     {form.variants.map((v: any, i: number) => (
                       <div
                         key={i}
-                        className="bg-bg border border-border rounded-xl p-2.5 grid grid-cols-12 gap-2 items-center hover:border-border/80 transition-colors"
+                        className="bg-bg border border-border rounded-xl p-2.5 grid gap-2 items-center hover:border-border/80 transition-colors"
+                        style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}
                       >
                         <div className="col-span-3">
                           <input
@@ -466,7 +483,7 @@ export default function ProductsPage() {
                             placeholder={`${form.skuBase || 'SKU'}-${i + 1}`}
                           />
                         </div>
-                        <div className="col-span-4">
+                        <div className="col-span-3">
                           <input
                             value={v.barcode}
                             onChange={e => setVariant(i, 'barcode', e.target.value)}
@@ -483,11 +500,30 @@ export default function ProductsPage() {
                           />
                         </div>
                         <div className="col-span-2">
+                          <div className="flex gap-1 items-center">
+                            <input
+                              type="color"
+                              value={v.colorHex || '#888888'}
+                              onChange={e => setVariant(i, 'colorHex', e.target.value)}
+                              className="w-7 h-7 rounded border border-border bg-bg cursor-pointer flex-shrink-0 p-0.5"
+                              title="Rang tanla"
+                            />
+                            <input
+                              value={v.color}
+                              onChange={e => setVariant(i, 'color', e.target.value)}
+                              className="field text-xs flex-1"
+                              placeholder="Qizil…"
+                            />
+                          </div>
+                        </div>
+                        <div className="col-span-2">
                           <input
-                            value={v.color}
-                            onChange={e => setVariant(i, 'color', e.target.value)}
-                            className="field text-xs"
-                            placeholder="Qizil…"
+                            type="number"
+                            min="0"
+                            value={v.priceOverride}
+                            onChange={e => setVariant(i, 'priceOverride', e.target.value)}
+                            className="field text-xs font-mono"
+                            placeholder={form.sellPrice || '—'}
                           />
                         </div>
                         <div className="col-span-1 flex justify-end">
