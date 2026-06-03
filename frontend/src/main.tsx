@@ -1,45 +1,28 @@
-import React         from 'react'
-import ReactDOM      from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import React from 'react'
+import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster }   from 'react-hot-toast'
-import App           from './App'
+import { Toaster } from 'react-hot-toast'
+import App from './App'
 import './index.css'
-// Import themeStore so its IIFE runs and applies the saved theme before paint
-import { useThemeStore } from './stores/themeStore'
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 30_000 },
+    queries: { retry: 1, staleTime: 30_000, refetchOnWindowFocus: false },
   },
 })
-
-// Toaster that adapts to the active theme via CSS variables
-function ThemedToaster() {
-  return (
-    <Toaster
-      position="top-right"
-      toastOptions={{
-        style: {
-          background: 'var(--toaster-bg)',
-          color:      'var(--toaster-color)',
-          border:     '1px solid var(--toaster-border)',
-        },
-      }}
-    />
-  )
-}
-
-// Suppress "unused import" warning – we side-effect-import the store
-void useThemeStore
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-        <ThemedToaster />
-      </BrowserRouter>
+      <App />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: { background: '#1e2029', color: '#e8e8e0', border: '1px solid #2e3141' },
+          success: { iconTheme: { primary: '#56c4a8', secondary: '#1e2029' } },
+          error: { iconTheme: { primary: '#e05c6a', secondary: '#1e2029' } },
+        }}
+      />
     </QueryClientProvider>
   </React.StrictMode>
 )

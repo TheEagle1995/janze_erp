@@ -3,8 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, ShoppingCart, Package, ClipboardList,
   BarChart3, Users, Warehouse, DollarSign, UserCheck,
-  Truck, Settings, LogOut, Menu, X, ChevronDown, Building2,
-  Percent, CreditCard,
+  Truck, Settings, LogOut, Menu, X, Building2,
+  Percent, CreditCard, Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
@@ -26,6 +26,7 @@ const navItems = [
   { to: '/discounts',   icon: Percent,         label: 'Discounts' },
   { to: '/debts',       icon: CreditCard,      label: 'Debts' },
   { to: '/branches',    icon: Building2,       label: 'Branches' },
+  { to: '/ai-insights', icon: Sparkles,        label: 'AI Insights' },
   { to: '/settings',    icon: Settings,        label: 'Settings' },
 ]
 
@@ -34,8 +35,8 @@ export default function Layout() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
 
-  const brand = user?.branch?.brand ?? 'JANZE'
-  const accent = brand === 'JANZE' ? JANZE_JADE : JANZE_GOLD
+  const brand = user?.branch?.brand ?? 'AVERO'
+  const accent = brand === 'AVERO' ? JANZE_GOLD : JANZE_JADE
 
   const handleLogout = async () => {
     await logout()
@@ -54,10 +55,12 @@ export default function Layout() {
         <div className="flex items-center gap-2 px-3 py-4 border-b border-border">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-display font-bold text-sm"
             style={{ background: accent + '22', color: accent }}>
-            {brand[0]}
+            A
           </div>
           {sideOpen && (
-            <span className="font-display font-bold text-sm text-fg truncate">{brand} ERP</span>
+            <span className="font-display font-bold text-sm tracking-tight truncate" style={{ color: accent }}>
+              AVERO × Janze
+            </span>
           )}
           <button
             onClick={() => setSideOpen(v => !v)}

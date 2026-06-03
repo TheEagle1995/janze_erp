@@ -43,8 +43,13 @@ export class OrdersService {
       ),
     }))
 
-    const subtotal      = Math.round(itemsWithTotals.reduce((s: number, i: any) => s + i.unitPrice * i.quantity, 0) * 100) / 100
-    const discountTotal = Math.round(itemsWithTotals.reduce((s: number, i: any) => s + (i.unitPrice * i.quantity - i.computedLineTotal), 0) * 100) / 100
+    const subtotal = Math.round(itemsWithTotals.reduce((s: number, i: any) => s + i.unitPrice * i.quantity, 0) * 100) / 100
+    // Per-item discount total (from individual discountPct/discountFixed on each line)
+    const itemDiscountTotal = Math.round(itemsWithTotals.reduce((s: number, i: any) => s + (i.unitPrice * i.quantity - i.computedLineTotal), 0) * 100) / 100
+    // If no per-item discounts were applied but dto.discountTotal was sent (e.g. POS cart-level discount),
+    // use the dto value. This prevents POS cart discounts from being silently dropped.
+    const dtoDiscount = Number(dto.discountTotal ?? 0)
+    const discountTotal = itemDiscountTotal > 0 ? itemDiscountTotal : dtoDiscount
     const netAmount     = Math.round((subtotal - discountTotal) * 100) / 100
     const taxTotal      = 0
     const total         = netAmount
@@ -91,7 +96,7 @@ export class OrdersService {
         include: { items: { include: { variant: { include: { product: true } } } }, payments: true },
       })
 
-      // Decrement inventory (only for variants that have tracked inventory)
+      // Decrement inventory — upsert ensures we always track stock even for new variant+branch combos
       for (const item of itemsWithTotals) {
         const inv = await tx.inventory.findUnique({
           where: { variantId_branchId: { variantId: item.variantId, branchId } },
@@ -100,6 +105,11 @@ export class OrdersService {
           await tx.inventory.update({
             where: { variantId_branchId: { variantId: item.variantId, branchId } },
             data:  { quantity: { decrement: item.quantity } },
+          })
+        } else {
+          // Create an inventory record starting at negative stock (backorder alert)
+          await tx.inventory.create({
+            data: { variantId: item.variantId, branchId, quantity: -item.quantity, lowStockThreshold: 5 },
           })
         }
         await tx.stockMovement.create({
@@ -124,11 +134,8 @@ export class OrdersService {
       return created
     })
 
-    // Only emit order.completed for ORDER-sourced orders (not POS).
-    // POS sales are tracked separately and do not feed the Orders analytics or Finance journals.
-    if (source === 'ORDER') {
-      this.events.emit('order.completed', { order, cashierId })
-    }
+    // Emit order.completed for ALL sources so every sale feeds analytics and finance journals.
+    this.events.emit('order.completed', { order, cashierId })
 
     return order
   }

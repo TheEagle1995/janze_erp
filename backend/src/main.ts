@@ -16,16 +16,32 @@ async function bootstrap() {
   // Security
   app.use(helmet())
   app.use(compression())
-  // Production frontend + localhost are always allowed; CORS_ORIGINS env can extend this list
-  const productionOrigins = [
+  // Allow all Vercel preview URLs for janze-erp-frontend + localhost + any extra origins via env
+  const extraOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) ?? []
+  const staticOrigins = new Set([
     'https://janze-erp-frontend.vercel.app',
     'https://janze-erp-frontend-nuriddinovabrorbek321-4949s-projects.vercel.app',
     'http://localhost:3000',
     'http://localhost:5173',
-  ]
-  const extraOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) ?? []
-  const allowedOrigins = [...new Set([...productionOrigins, ...extraOrigins])]
-  app.enableCors({ origin: allowedOrigins, credentials: true })
+    ...extraOrigins,
+  ])
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
+      if (!origin) return callback(null, true)
+      // Allow any janze-erp-frontend Vercel preview/production URL
+      if (/^https:\/\/janze-erp-frontend(-[a-z0-9]+)*\.vercel\.app$/.test(origin)) {
+        return callback(null, true)
+      }
+      // Allow any nuriddinovabrorbek321 Vercel project URL
+      if (/^https:\/\/.*nuriddinovabrorbek321.*\.vercel\.app$/.test(origin)) {
+        return callback(null, true)
+      }
+      if (staticOrigins.has(origin)) return callback(null, true)
+      callback(new Error(`CORS: origin not allowed: ${origin}`))
+    },
+    credentials: true,
+  })
 
   // Global prefix
   app.setGlobalPrefix('api/v1')

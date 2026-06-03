@@ -36,7 +36,7 @@
   --color-surface:  255 255 255;
   --color-surface2: 241 243 248;
   --color-border:   218 220 232;
-  --color-gold:     79  70  229;     /* indigo accent */
+  --color-gold:     79  70  229;
   --color-gold-dim: rgba(79,70,229,0.10);
   --color-jade:     22  163 74;
   --color-rose:     220 38  38;
@@ -78,7 +78,7 @@
   --color-border:   65  45 110;
   --color-gold:     212 175 55;
   --color-gold-dim: rgba(212,175,55,0.12);
-  --color-jade:     139 92 246;      /* violet for "success" in luxury */
+  --color-jade:     139 92 246;
   --color-rose:     236 72  153;
   --color-muted:    130 110 170;
   --color-fg:       240 230 255;
@@ -96,7 +96,7 @@
   --color-surface:  255 255 255;
   --color-surface2: 244 244 248;
   --color-border:   226 226 234;
-  --color-gold:     59  130 246;     /* blue accent */
+  --color-gold:     59  130 246;
   --color-gold-dim: rgba(59,130,246,0.10);
   --color-jade:     16  185 129;
   --color-rose:     239 68  68;
@@ -121,13 +121,13 @@ body {
   transition:  background 0.25s ease, color 0.25s ease;
 }
 
-/* Light themes need to override `text-white` (used pervasively for dark themes) */
+/* Light themes — override text-white used pervasively for dark themes */
 [data-theme="light"] .text-white,
 [data-theme="minimal"] .text-white {
   color: rgb(var(--color-fg)) !important;
 }
 
-/* Light themes – invert the "white" border/divide colour in tables/cards */
+/* Light themes — fix border colours */
 [data-theme="light"] .border-border,
 [data-theme="minimal"] .border-border {
   border-color: rgb(var(--color-border)) !important;
@@ -135,17 +135,17 @@ body {
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb {
-  background:    var(--scrollbar-thumb);
+  background:    var(--scrollbar-thumb, rgba(255,255,255,0.10));
   border-radius: 99px;
 }
 
-/* ── Smooth theme transition on all background/border/color props ───────── */
+/* ── Smooth theme transition ─────────────────────────────────────────────── */
 *, *::before, *::after {
   transition-property: background-color, border-color, color, fill, stroke;
   transition-duration: 0.18s;
   transition-timing-function: ease;
 }
-/* But NOT transform / opacity / width / height etc. (would break animations) */
+/* Don't override existing transition/animate classes */
 [class*="transition-"], [class*="animate-"] {
   transition-property: revert;
 }
@@ -154,11 +154,12 @@ body {
    COMPONENT CLASSES
    ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
-  /* Form label — used everywhere as <label className="label"> */
   .label {
     @apply block text-xs font-medium text-muted mb-1;
   }
-
+  .field-label {
+    @apply block text-xs text-muted mb-1.5;
+  }
   .btn-primary {
     @apply bg-gold hover:bg-gold/90 text-bg font-semibold px-4 py-2 rounded-lg text-sm;
     transition: background-color 0.15s, opacity 0.15s;
@@ -174,6 +175,19 @@ body {
     @apply w-full bg-surface2 border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder-muted focus:outline-none focus:border-gold;
     transition: border-color 0.15s;
   }
+  .field {
+    width: 100%;
+    background: rgb(var(--color-bg));
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    color: rgb(var(--color-fg));
+    outline: none;
+  }
+  .field:focus {
+    border-color: rgba(var(--color-gold) / 0.6);
+  }
 }
 
 /* ── Neon-theme glow accents ─────────────────────────────────────────────── */
@@ -184,7 +198,6 @@ body {
   box-shadow: 0 0 12px rgba(0,255,65,0.4);
   text-shadow: 0 0 8px rgba(0,255,65,0.6);
 }
-[data-theme="neon"] a[class*="bg-gold-dim"],
 [data-theme="neon"] [class*="bg-gold-dim"] {
   box-shadow: 0 0 8px rgba(0,255,65,0.2);
 }

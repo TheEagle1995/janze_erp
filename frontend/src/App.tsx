@@ -1,53 +1,70 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from './stores/authStore'
-import LoginPage      from './pages/LoginPage'
-import Layout         from './components/shared/Layout'
-import POSPage        from './pages/POSPage'
-import DashboardPage  from './pages/DashboardPage'
-import ProductsPage   from './pages/ProductsPage'
-import InventoryPage  from './pages/InventoryPage'
-import CustomersPage  from './pages/CustomersPage'
-import OrdersPage     from './pages/OrdersPage'
-import FinancePage    from './pages/FinancePage'
-import SettingsPage   from './pages/SettingsPage'
-import SellersPage    from './pages/SellersPage'
-import BranchesPage   from './pages/BranchesPage'
-import MarketingPage  from './pages/MarketingPage'
-import DebtPage       from './pages/DebtPage'
-import EmployeesPage  from './pages/EmployeesPage'
-import AnalyticsPage  from './pages/AnalyticsPage'
-import SuppliersPage      from './pages/SuppliersPage'
-import AIInsightsPage     from './pages/AIInsightsPage'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useAuthStore } from './store/authStore'
+import Layout from './components/Layout'
+import LoginPage     from './pages/LoginPage'
+import DashboardPage from './pages/DashboardPage'
+import POSPage       from './pages/POSPage'
+import ProductsPage  from './pages/ProductsPage'
+import OrdersPage    from './pages/OrdersPage'
+import AnalyticsPage from './pages/AnalyticsPage'
+import CustomersPage from './pages/CustomersPage'
+import InventoryPage from './pages/InventoryPage'
+import FinancePage   from './pages/FinancePage'
+import EmployeesPage from './pages/EmployeesPage'
+import SuppliersPage from './pages/SuppliersPage'
+import DiscountsPage from './pages/DiscountsPage'
+import DebtsPage     from './pages/DebtsPage'
+import BranchesPage  from './pages/BranchesPage'
+import SettingsPage  from './pages/SettingsPage'
 
-function RequireAuth({ children }: { children: JSX.Element }) {
-  const isAuthenticated = useAuthStore(s => s.isAuthenticated)
-  return isAuthenticated ? children : <Navigate to="/login" replace />
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { token, user } = useAuthStore()
+  if (!token || !user) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function PublicOnly({ children }: { children: React.ReactNode }) {
+  const { token, user } = useAuthStore()
+  if (token && user) return <Navigate to="/" replace />
+  return <>{children}</>
 }
 
 export default function App() {
+  const { init } = useAuthStore()
+
+  useEffect(() => {
+    init()
+  }, [init])
+
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-        <Route index           element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard"  element={<DashboardPage />} />
-        <Route path="pos"        element={<POSPage />} />
-        <Route path="products/*" element={<ProductsPage />} />
-        <Route path="inventory"  element={<InventoryPage />} />
-        <Route path="customers"  element={<CustomersPage />} />
-        <Route path="orders"     element={<OrdersPage />} />
-        <Route path="finance/*"  element={<FinancePage />} />
-        <Route path="debts"      element={<DebtPage />} />
-        <Route path="employees"  element={<EmployeesPage />} />
-        <Route path="sellers"    element={<SellersPage />} />
-        <Route path="branches"   element={<BranchesPage />} />
-        <Route path="marketing"  element={<MarketingPage />} />
-        <Route path="analytics"  element={<AnalyticsPage />} />
-        <Route path="suppliers"  element={<SuppliersPage />} />
-        <Route path="ai-insights" element={<AIInsightsPage />} />
-        <Route path="settings"   element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={
+          <PublicOnly><LoginPage /></PublicOnly>
+        } />
+
+        <Route element={
+          <RequireAuth><Layout /></RequireAuth>
+        }>
+          <Route index element={<DashboardPage />} />
+          <Route path="pos"        element={<POSPage />} />
+          <Route path="products"   element={<ProductsPage />} />
+          <Route path="orders"     element={<OrdersPage />} />
+          <Route path="analytics"  element={<AnalyticsPage />} />
+          <Route path="customers"  element={<CustomersPage />} />
+          <Route path="inventory"  element={<InventoryPage />} />
+          <Route path="finance"    element={<FinancePage />} />
+          <Route path="employees"  element={<EmployeesPage />} />
+          <Route path="suppliers"  element={<SuppliersPage />} />
+          <Route path="discounts"  element={<DiscountsPage />} />
+          <Route path="debts"      element={<DebtsPage />} />
+          <Route path="branches"   element={<BranchesPage />} />
+          <Route path="settings"   element={<SettingsPage />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
 }

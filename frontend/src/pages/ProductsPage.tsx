@@ -29,7 +29,7 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState<any>(null)
 
   const [form, setForm] = useState<any>({
-    name: '', skuBase: '', brand: 'JANZE', costPrice: '', sellPrice: '',
+    name: '', skuBase: '', brand: 'AVERO', costPrice: '', sellPrice: '',
     description: '', categoryId: '', unit: 'dona', isActive: true, isFlexiblePrice: false,
     variants: [{ ...EMPTY_VARIANT }],
   })
@@ -64,7 +64,7 @@ export default function ProductsPage() {
 
   const openAdd = () => {
     setForm({
-      name: '', skuBase: '', brand: 'JANZE', costPrice: '', sellPrice: '',
+      name: '', skuBase: '', brand: 'AVERO', costPrice: '', sellPrice: '',
       description: '', categoryId: '', unit: 'dona', isActive: true, isFlexiblePrice: false,
       variants: [{ ...EMPTY_VARIANT }],
     })
@@ -159,6 +159,7 @@ export default function ProductsPage() {
         <select value={brand} onChange={e => { setBrand(e.target.value); setPage(1) }}
           className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg focus:outline-none">
           <option value="">Barcha brendlar</option>
+          <option value="AVERO">AVERO</option>
           <option value="JANZE">JANZE</option>
         </select>
       </div>
@@ -358,6 +359,7 @@ export default function ProductsPage() {
                         onChange={e => setForm((f: any) => ({ ...f, brand: e.target.value }))}
                         className="field"
                       >
+                        <option value="AVERO">AVERO</option>
                         <option value="JANZE">JANZE</option>
                       </select>
                     </div>

@@ -22,59 +22,64 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background glow */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 bg-gold/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="w-full max-w-sm relative">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gold/10 mb-4">
-            <span className="text-3xl font-display font-bold text-gold">J</span>
-          </div>
-          <h1 className="text-2xl font-display font-bold text-fg">Janze ERP</h1>
-          <p className="text-muted text-sm mt-1">Fashion Retail Management System</p>
+          <h1 className="font-display text-3xl font-bold text-gold tracking-tight">AVERO × Janze</h1>
+          <p className="text-muted text-sm mt-1">Retail ERP System</p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={submit} className="bg-surface border border-border rounded-2xl p-6 space-y-4">
-          <div>
-            <label className="block text-xs text-muted mb-1.5">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              placeholder="admin@example.com"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2.5 text-sm text-fg placeholder:text-muted/50 focus:outline-none focus:border-gold/60 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-muted mb-1.5">Password</label>
-            <div className="relative">
+        {/* Card */}
+        <div className="card">
+          <h2 className="text-lg font-semibold text-fg mb-6">Kirish</h2>
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="label">Email</label>
               <input
-                type={show ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 required
-                placeholder="••••••••"
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2.5 text-sm text-fg placeholder:text-muted/50 focus:outline-none focus:border-gold/60 transition-colors pr-10"
+                placeholder="admin@avero.uz"
+                className="input"
               />
-              <button type="button" onClick={() => setShow(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg">
-                {show ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
             </div>
-          </div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-gold text-bg rounded-lg py-2.5 text-sm font-semibold hover:bg-gold/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isLoading && <Loader2 size={15} className="animate-spin" />}
-            Sign In
-          </button>
-        </form>
+            <div>
+              <label className="label">Parol</label>
+              <div className="relative">
+                <input
+                  type={show ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  placeholder="••••••••"
+                  className="input pr-10"
+                />
+                <button type="button" onClick={() => setShow(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg transition-colors">
+                  {show ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="btn-primary w-full mt-2 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isLoading && <Loader2 size={15} className="animate-spin" />}
+              {isLoading ? 'Kirmoqda…' : 'Kirish'}
+            </button>
+          </form>
+        </div>
 
         <p className="text-center text-xs text-muted mt-4">
-          Powered by Janze ERP v2.0
+          AVERO × Janze ERP v2.0
         </p>
       </div>
     </div>
