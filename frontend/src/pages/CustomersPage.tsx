@@ -1,218 +1,390 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { customersApi } from '../lib/api'
-import { useState } from 'react'
-import { PageHeader, Badge, EmptyState, fmt, fmtDate } from '../components/Shared'
-import { Search, Plus, X, Loader2, ChevronRight, Edit2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { fmt }          from '../utils/format'
+import { useT }         from '../i18n'
+import toast            from 'react-hot-toast'
+import clsx             from 'clsx'
+import dayjs            from 'dayjs'
+import {
+  Search, Plus, Star, Phone, Mail, MapPin, X, Pencil,
+  Crown, Users, ShoppingBag, TrendingUp, Calendar,
+} from 'lucide-react'
 
-const TIERS = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM']
-const TIER_COLORS: Record<string, string> = {
-  BRONZE: 'muted', SILVER: 'muted', GOLD: 'gold', PLATINUM: 'green',
+// ── Segment config ────────────────────────────────────────────────────────────
+const SEGMENT_CONFIG = {
+  VIP:      { color: 'text-gold bg-gold-dim border-gold/30',    icon: Crown,      label: 'VIP' },
+  REGULAR:  { color: 'text-jade bg-jade/10 border-jade/30',     icon: Users,      label: 'Regular' },
+  INACTIVE: { color: 'text-muted bg-surface2 border-border',    icon: Users,      label: 'Inactive' },
 }
 
-interface CustomerForm {
-  name: string; phone: string; email: string; address: string; loyaltyTier: string; notes: string
-}
+// ── Customer Modal ─────────────────────────────────────────────────────────────
+function CustomerModal({ customer, onClose }: { customer: any | null; onClose: () => void }) {
+  const qc     = useQueryClient()
+  const t      = useT()
+  const isEdit = !!customer
 
-const empty: CustomerForm = { name: '', phone: '', email: '', address: '', loyaltyTier: 'BRONZE', notes: '' }
+  const [form, setForm] = useState({
+    name:         customer?.name         ?? '',
+    phone:        customer?.phone        ?? '',
+    email:        customer?.email        ?? '',
+    address:      customer?.address      ?? '',
+    birthday:     customer?.birthday ? dayjs(customer.birthday).format('YYYY-MM-DD') : '',
+    loyaltyPoints:customer?.loyaltyPoints ?? 0,
+    discountPct:  customer?.discountPct  ?? 0,
+    segment:      customer?.segment      ?? 'REGULAR',
+    notes:        customer?.notes        ?? '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-export default function CustomersPage() {
-  const qc = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [page, setPage]     = useState(1)
-  const [selected, setSelected] = useState<any>(null)
-  const [showModal, setShowModal] = useState(false)
-  const [editing,   setEditing]   = useState<any>(null)
-  const [form, setForm]           = useState<CustomerForm>(empty)
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['customers', search, page],
-    queryFn:  () => customersApi.list({ search: search || undefined, page, limit: 25 }),
+  const save = useMutation({
+    mutationFn: (d: any) => isEdit ? customersApi.update(customer.id, d) : customersApi.create(d),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers'] })
+      toast.success(isEdit ? t.notifications.updated : t.notifications.created)
+      onClose()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? t.errors.saveFailed),
   })
 
-  const { data: detail } = useQuery({
-    queryKey: ['customer', selected?.id],
-    queryFn:  () => customersApi.get(selected.id),
-    enabled:  !!selected?.id,
-  })
-
-  const customers = data?.data ?? []
-  const meta      = data?.meta ?? {}
-
-  const createMut = useMutation({
-    mutationFn: customersApi.create,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['customers'] }); closeModal(); toast.success('Customer created') },
-    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
-  })
-
-  const updateMut = useMutation({
-    mutationFn: ({ id, data }: any) => customersApi.update(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['customers'] }); qc.invalidateQueries({ queryKey: ['customer'] }); closeModal(); toast.success('Customer updated') },
-    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
-  })
-
-  const openCreate = () => { setEditing(null); setForm(empty); setShowModal(true) }
-  const openEdit   = (c: any) => {
-    setEditing(c)
-    setForm({ name: c.name, phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', loyaltyTier: c.loyaltyTier ?? 'BRONZE', notes: c.notes ?? '' })
-    setShowModal(true)
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim())  return toast.error(t.errors.required)
+    if (!form.phone.trim()) return toast.error(t.errors.required)
+    save.mutate({
+      name:          form.name.trim(),
+      phone:         form.phone.trim(),
+      email:         form.email.trim() || null,
+      address:       form.address.trim() || null,
+      birthday:      form.birthday || null,
+      loyaltyPoints: Number(form.loyaltyPoints),
+      discountPct:   Number(form.discountPct),
+      segment:       form.segment,
+      notes:         form.notes.trim() || null,
+    })
   }
-  const closeModal = () => { setShowModal(false); setEditing(null) }
-
-  const submit = () => {
-    if (!form.name.trim()) return toast.error('Name is required')
-    if (editing) updateMut.mutate({ id: editing.id, data: form })
-    else         createMut.mutate(form)
-  }
-
-  const f = (k: keyof CustomerForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    setForm(v => ({ ...v, [k]: e.target.value }))
-
-  const busy = createMut.isPending || updateMut.isPending
 
   return (
-    <div className="h-full flex flex-col">
-      <PageHeader title="Customers" subtitle={`${meta.total ?? 0} customers`}
-        action={<button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-bg text-sm font-semibold rounded-lg hover:bg-gold/90"><Plus size={14} />Add Customer</button>}
-      />
-
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Search customers…"
-            className="bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-fg w-56 focus:outline-none focus:border-gold/60" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <h2 className="text-lg font-bold">{isEdit ? t.customers.editCustomer : t.customers.addCustomer}</h2>
+          <button onClick={onClose} className="text-muted hover:text-white"><X size={20} /></button>
         </div>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* List */}
-        <div className="flex-1 overflow-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-32"><Loader2 size={24} className="animate-spin text-gold" /></div>
-          ) : customers.length ? (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-surface border-b border-border">
-                <tr>
-                  <th className="text-left px-4 py-3 text-xs text-muted font-medium">Name</th>
-                  <th className="text-left px-4 py-3 text-xs text-muted font-medium">Phone</th>
-                  <th className="text-left px-4 py-3 text-xs text-muted font-medium">Email</th>
-                  <th className="text-left px-4 py-3 text-xs text-muted font-medium">Tier</th>
-                  <th className="text-right px-4 py-3 text-xs text-muted font-medium">Points</th>
-                  <th className="text-right px-4 py-3 text-xs text-muted font-medium">Lifetime</th>
-                  <th className="text-left px-4 py-3 text-xs text-muted font-medium">Joined</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {customers.map((c: any) => (
-                  <tr key={c.id} onClick={() => setSelected(c)}
-                    className={`cursor-pointer hover:bg-surface2/40 ${selected?.id === c.id ? 'bg-surface2/60' : ''}`}>
-                    <td className="px-4 py-3 text-sm text-fg font-medium">{c.name}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{c.phone ?? '—'}</td>
-                    <td className="px-4 py-3 text-xs text-muted truncate max-w-[160px]">{c.email ?? '—'}</td>
-                    <td className="px-4 py-3"><Badge color={TIER_COLORS[c.loyaltyTier ?? 'BRONZE']}>{c.loyaltyTier ?? 'BRONZE'}</Badge></td>
-                    <td className="px-4 py-3 text-right text-xs font-mono text-gold">{c.loyaltyPoints ?? 0}</td>
-                    <td className="px-4 py-3 text-right text-xs font-mono text-fg">{fmt(c.lifetimeValue ?? 0)}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{fmtDate(c.createdAt)}</td>
-                    <td className="px-4 py-3 text-muted"><ChevronRight size={14} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <EmptyState message="No customers found" />
-          )}
-
-          {meta.lastPage > 1 && (
-            <div className="flex items-center justify-between px-6 py-3 border-t border-border text-sm text-muted">
-              <span>Page {page} of {meta.lastPage}</span>
-              <div className="flex gap-2">
-                <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-                  className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-surface2">Prev</button>
-                <button disabled={page === meta.lastPage} onClick={() => setPage(p => p + 1)}
-                  className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-surface2">Next</button>
-              </div>
+        <form onSubmit={submit} className="p-5 space-y-3">
+          <div>
+            <label className="label">{t.common.name} *</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)}
+              placeholder="Full name" className="input w-full" required />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">{t.customers.phone} *</label>
+              <input value={form.phone} onChange={e => set('phone', e.target.value)}
+                placeholder="+998 90 …" className="input w-full" required />
             </div>
-          )}
-        </div>
-
-        {/* Detail panel */}
-        {selected && (
-          <div className="w-72 border-l border-border overflow-auto bg-surface p-4 shrink-0">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-fg">Customer Detail</h3>
-              <div className="flex gap-2">
-                <button onClick={() => openEdit(detail ?? selected)} className="text-muted hover:text-gold"><Edit2 size={14} /></button>
-                <button onClick={() => setSelected(null)} className="text-muted hover:text-fg">×</button>
-              </div>
-            </div>
-            <div className="space-y-3 text-sm">
-              <div><p className="text-xs text-muted">Name</p><p className="text-fg font-medium">{selected.name}</p></div>
-              {selected.phone && <div><p className="text-xs text-muted">Phone</p><p className="text-fg">{selected.phone}</p></div>}
-              {selected.email && <div><p className="text-xs text-muted">Email</p><p className="text-fg truncate">{selected.email}</p></div>}
-              {selected.address && <div><p className="text-xs text-muted">Address</p><p className="text-fg text-xs">{selected.address}</p></div>}
-              <div><p className="text-xs text-muted">Loyalty Tier</p><Badge color={TIER_COLORS[selected.loyaltyTier ?? 'BRONZE']}>{selected.loyaltyTier ?? 'BRONZE'}</Badge></div>
-              <div><p className="text-xs text-muted">Points</p><p className="text-gold font-mono">{selected.loyaltyPoints ?? 0}</p></div>
-              <div><p className="text-xs text-muted">Lifetime Value</p><p className="text-gold font-mono">{fmt(selected.lifetimeValue ?? 0)}</p></div>
-              {detail?.orders && (
-                <div>
-                  <p className="text-xs text-muted mb-2">Recent Orders ({detail.orders.length})</p>
-                  <div className="space-y-1">
-                    {detail.orders.slice(0, 5).map((o: any) => (
-                      <div key={o.id} className="flex justify-between text-xs">
-                        <span className="text-muted font-mono">#{o.id.slice(-6)}</span>
-                        <span className="font-mono text-gold">{fmt(o.total)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {selected.notes && <div><p className="text-xs text-muted">Notes</p><p className="text-fg text-xs">{selected.notes}</p></div>}
+            <div>
+              <label className="label">{t.customers.email}</label>
+              <input value={form.email} onChange={e => set('email', e.target.value)}
+                type="email" placeholder="email@…" className="input w-full" />
             </div>
           </div>
+          <div>
+            <label className="label">{t.customers.address}</label>
+            <input value={form.address} onChange={e => set('address', e.target.value)}
+              placeholder="Street, city…" className="input w-full" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">{t.customers.birthday}</label>
+              <input value={form.birthday} onChange={e => set('birthday', e.target.value)}
+                type="date" className="input w-full" />
+            </div>
+            <div>
+              <label className="label">{t.customers.segment}</label>
+              <select value={form.segment} onChange={e => set('segment', e.target.value)} className="input w-full">
+                <option value="REGULAR">{t.customers.regular}</option>
+                <option value="VIP">{t.customers.vip}</option>
+                <option value="INACTIVE">{t.customers.inactive}</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">{t.customers.loyaltyPts}</label>
+              <input value={form.loyaltyPoints} onChange={e => set('loyaltyPoints', e.target.value)}
+                type="number" min="0" className="input w-full font-mono" />
+            </div>
+            <div>
+              <label className="label">{t.customers.discount}</label>
+              <input value={form.discountPct} onChange={e => set('discountPct', e.target.value)}
+                type="number" min="0" max="100" step="0.5" className="input w-full font-mono" />
+            </div>
+          </div>
+          <div>
+            <label className="label">{t.customers.notes}</label>
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+              rows={2} className="input w-full resize-none" placeholder="Internal notes…" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">{t.common.cancel}</button>
+            <button type="submit" disabled={save.isPending} className="btn-primary flex-1 disabled:opacity-50">
+              {save.isPending ? t.common.loading : isEdit ? t.common.save : t.customers.addCustomer}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Customer detail panel ─────────────────────────────────────────────────────
+function CustomerDetail({ customer, onEdit }: { customer: any; onEdit: () => void }) {
+  const t = useT()
+  const { data: history } = useQuery({
+    queryKey: ['customer-history', customer.id],
+    queryFn:  () => customersApi.history(customer.id, { limit: 10 }),
+  })
+
+  const seg    = SEGMENT_CONFIG[customer.segment as keyof typeof SEGMENT_CONFIG] ?? SEGMENT_CONFIG.REGULAR
+  const SegIcon = seg.icon
+
+  const rows = [
+    [t.customers.phone,      customer.phone,                       <Phone size={12} key="p" />],
+    [t.customers.email,      customer.email ?? '—',                <Mail  size={12} key="e" />],
+    [t.customers.address,    customer.address ?? '—',              <MapPin size={12} key="a" />],
+    [t.customers.birthday,   customer.birthday ? dayjs(customer.birthday).format('DD MMM YYYY') : '—', <Calendar size={12} key="b" />],
+    [t.customers.loyaltyPts, `${customer.loyaltyPoints} pts`,      <Star size={12} key="s" />],
+    [t.customers.discount,   `${customer.discountPct}%`,           null],
+    [t.customers.totalSpent, fmt.currency(customer.totalSpent),    null],
+    [t.customers.totalOrders,String(customer.totalOrders),         null],
+  ] as const
+
+  return (
+    <div className="space-y-4">
+      <div className="card">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={clsx('text-xs border px-2 py-0.5 rounded flex items-center gap-1', seg.color)}>
+                <SegIcon size={10} /> {t.customers[customer.segment?.toLowerCase() as 'vip' | 'regular' | 'inactive'] ?? customer.segment}
+              </span>
+            </div>
+            <h3 className="font-semibold">{customer.name}</h3>
+            <p className="text-xs text-muted">{t.customers.since} {dayjs(customer.createdAt).format('MMM YYYY')}</p>
+          </div>
+          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-surface2 text-muted hover:text-white transition-colors">
+            <Pencil size={14} />
+          </button>
+        </div>
+        <div className="space-y-2">
+          {rows.map(([label, val, icon]) => (
+            <div key={String(label)} className="flex justify-between items-center text-sm">
+              <span className="text-muted flex items-center gap-1">{icon}{label}</span>
+              <span className="font-medium text-right text-xs max-w-[160px] truncate">{val}</span>
+            </div>
+          ))}
+        </div>
+        {customer.notes && (
+          <div className="mt-3 p-2 bg-surface2 rounded-lg text-xs text-muted">{customer.notes}</div>
         )}
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-fg">{editing ? 'Edit Customer' : 'Add Customer'}</h2>
-              <button onClick={closeModal} className="text-muted hover:text-fg"><X size={18} /></button>
-            </div>
-            <div className="space-y-3">
-              {([['name','Name *','text'],['phone','Phone','text'],['email','Email','email'],['address','Address','text']] as const).map(([k, label, type]) => (
-                <div key={k}>
-                  <label className="block text-xs text-muted mb-1">{label}</label>
-                  <input type={type} value={form[k as keyof CustomerForm]} onChange={f(k as keyof CustomerForm)}
-                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
-                </div>
-              ))}
+      <div className="card">
+        <h3 className="font-semibold text-sm mb-3">{t.customers.recentOrders}</h3>
+        <div className="space-y-2">
+          {((history as any)?.data ?? []).slice(0, 6).map((o: any) => (
+            <div key={o.id} className="flex justify-between items-center py-1.5 border-b border-border last:border-0">
               <div>
-                <label className="block text-xs text-muted mb-1">Loyalty Tier</label>
-                <select value={form.loyaltyTier} onChange={f('loyaltyTier')}
-                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none">
-                  {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <div className="text-xs font-mono text-muted">{o.orderNumber}</div>
+                <div className="text-xs text-muted">{fmt.date(o.createdAt)}</div>
               </div>
-              <div>
-                <label className="block text-xs text-muted mb-1">Notes</label>
-                <textarea value={form.notes} onChange={f('notes')} rows={2}
-                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60 resize-none" />
+              <div className="text-right">
+                <div className="font-mono text-sm font-semibold">{fmt.compact(Number(o.total))}</div>
+                <div className="text-xs text-jade">{o.status}</div>
               </div>
             </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={closeModal} className="flex-1 py-2 border border-border rounded-lg text-sm text-muted hover:text-fg">Cancel</button>
-              <button onClick={submit} disabled={busy}
-                className="flex-1 py-2 bg-gold text-bg rounded-lg text-sm font-semibold hover:bg-gold/90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {busy && <Loader2 size={14} className="animate-spin" />}
-                {editing ? 'Save' : 'Create'}
+          ))}
+          {!(history as any)?.data?.length && <p className="text-xs text-muted">{t.customers.noOrders}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Segment filter pills ──────────────────────────────────────────────────────
+const SEGS = ['ALL', 'VIP', 'REGULAR', 'INACTIVE'] as const
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function CustomersPage() {
+  const t     = useT()
+  const qc    = useQueryClient()
+  const [search, setSearch]       = useState('')
+  const [page, setPage]           = useState(1)
+  const [segment, setSegment]     = useState<string>('ALL')
+  const [selected, setSelected]   = useState<any>(null)
+  const [modal, setModal]         = useState<'create' | 'edit' | null>(null)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['customers', search, segment, page],
+    queryFn:  () => customersApi.list({
+      search:  search || undefined,
+      segment: segment === 'ALL' ? undefined : segment,
+      page, limit: 20,
+    }),
+  })
+
+  const customers = (data as any)?.data ?? []
+  const meta      = (data as any)?.meta ?? {}
+
+  const topBySpend = [...customers].sort((a: any, b: any) => Number(b.totalSpent) - Number(a.totalSpent)).slice(0, 3)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold">{t.customers.title}</h1>
+          <p className="text-sm text-muted mt-0.5">{meta.total ?? 0} {t.customers.title.toLowerCase()}</p>
+        </div>
+        <button onClick={() => { setSelected(null); setModal('create') }} className="btn-primary flex items-center gap-2">
+          <Plus size={14} /> {t.customers.addCustomer}
+        </button>
+      </div>
+
+      <div className="flex gap-4 h-full">
+        {/* Left: list */}
+        <div className="flex-1 space-y-3 min-w-0">
+          {/* Search */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
+              placeholder={t.customers.searchCustomer} className="input pl-9" />
+          </div>
+
+          {/* Segment filter */}
+          <div className="flex gap-1 bg-surface2 rounded-xl p-1 border border-border w-fit">
+            {SEGS.map(s => (
+              <button key={s} onClick={() => { setSegment(s); setPage(1) }}
+                className={clsx('px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+                  segment === s ? 'bg-surface text-white shadow' : 'text-muted hover:text-white')}>
+                {s === 'ALL' ? t.common.all : t.customers[s.toLowerCase() as 'vip' | 'regular' | 'inactive']}
+              </button>
+            ))}
+          </div>
+
+          {/* List */}
+          {isLoading ? (
+            <div className="text-center py-16 text-muted">{t.common.loading}</div>
+          ) : customers.length === 0 ? (
+            <div className="text-center py-16 text-muted card">
+              <Users size={48} className="mx-auto mb-3 opacity-30" />
+              <p>{t.common.noData}</p>
+              <button onClick={() => setModal('create')} className="btn-primary mt-4 inline-flex items-center gap-2">
+                <Plus size={14} /> {t.customers.addCustomer}
               </button>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              {customers.map((c: any) => {
+                const seg    = SEGMENT_CONFIG[c.segment as keyof typeof SEGMENT_CONFIG] ?? SEGMENT_CONFIG.REGULAR
+                const SegIcon = seg.icon
+                return (
+                  <button key={c.id} onClick={() => setSelected(c)}
+                    className={clsx('w-full card text-left transition-colors hover:border-gold/30 group',
+                      selected?.id === c.id ? 'border-gold/50' : '')}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-surface2 border border-border flex items-center justify-center text-sm font-bold">
+                          {c.name[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm flex items-center gap-2">
+                            {c.name}
+                            <span className={clsx('text-xs border px-1.5 py-px rounded hidden group-hover:inline-flex items-center gap-0.5', seg.color)}>
+                              <SegIcon size={9} /> {c.segment}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted flex items-center gap-1 mt-0.5">
+                            <Phone size={9} /> {c.phone}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-gold text-xs">
+                          <Star size={10} /> {c.loyaltyPoints} pts
+                        </div>
+                        <div className="text-xs text-muted mt-0.5">{fmt.compact(Number(c.totalSpent))}</div>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {meta.lastPage > 1 && (
+            <div className="flex justify-center gap-2 pt-1">
+              {Array.from({ length: meta.lastPage }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => setPage(p)}
+                  className={clsx('w-8 h-8 rounded-lg text-xs transition-colors',
+                    p === page ? 'bg-gold text-bg font-bold' : 'bg-surface2 text-muted hover:bg-border')}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Right: detail / top customers */}
+        <div className="w-72 flex-shrink-0 space-y-4">
+          {selected ? (
+            <CustomerDetail customer={selected}
+              onEdit={() => setModal('edit')} />
+          ) : (
+            <>
+              <div className="card">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <TrendingUp size={14} className="text-gold" /> {t.customers.topCustomers}
+                </h3>
+                {topBySpend.length === 0 ? (
+                  <p className="text-xs text-muted">{t.common.noData}</p>
+                ) : topBySpend.map((c: any, i: number) => (
+                  <div key={c.id} className="flex items-center gap-2 py-2 border-b border-border last:border-0 cursor-pointer hover:opacity-80"
+                    onClick={() => setSelected(c)}>
+                    <span className="text-xs text-muted w-4 font-mono">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{c.name}</div>
+                      <div className="text-xs text-muted">{c.totalOrders} orders</div>
+                    </div>
+                    <span className="text-xs font-mono text-gold">{fmt.compact(Number(c.totalSpent))}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="card">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <ShoppingBag size={14} className="text-jade" /> {t.customers.mostFrequent}
+                </h3>
+                {[...customers].sort((a: any, b: any) => b.totalOrders - a.totalOrders).slice(0, 3).map((c: any, i: number) => (
+                  <div key={c.id} className="flex items-center gap-2 py-2 border-b border-border last:border-0 cursor-pointer hover:opacity-80"
+                    onClick={() => setSelected(c)}>
+                    <span className="text-xs text-muted w-4 font-mono">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{c.name}</div>
+                    </div>
+                    <span className="text-xs font-mono text-jade">{c.totalOrders}×</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {(modal === 'create' || modal === 'edit') && (
+        <CustomerModal customer={modal === 'edit' ? selected : null}
+          onClose={() => setModal(null)} />
       )}
     </div>
   )
