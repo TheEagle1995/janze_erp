@@ -45,7 +45,7 @@ export const useI18n = create<I18nState>()(
       t:       locales['uz'],
       setLang: (l) => set({ lang: l, t: locales[l] }),
     }),
-    { name: 'avero-lang-v2' }
+    { name: 'janze-lang-v2' }
   )
 )
 

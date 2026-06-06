@@ -1,209 +1,131 @@
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { branchesApi } from '../lib/api'
-import { useT }        from '../i18n'
+import { useState } from 'react'
+import { PageHeader, Badge, EmptyState } from '../components/Shared'
+import { Plus, X, Loader2, Edit2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Plus, Pencil, X, Building2, MapPin, Phone, CheckCircle, XCircle } from 'lucide-react'
-import clsx from 'clsx'
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
-function BranchModal({ branch, onClose }: { branch: any | null; onClose: () => void }) {
-  const qc     = useQueryClient()
-  const t      = useT()
-  const isEdit = !!branch
+interface BranchForm {
+  name: string; address: string; phone: string; isActive: boolean
+}
+const empty: BranchForm = { name: '', address: '', phone: '', isActive: true }
 
-  const [form, setForm] = useState({
-    name:     branch?.name     ?? '',
-    brand:    branch?.brand    ?? 'AVERO',
-    address:  branch?.address  ?? '',
-    phone:    branch?.phone    ?? '',
-    isActive: branch?.isActive ?? true,
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+export default function BranchesPage() {
+  const qc = useQueryClient()
+  const [showModal, setShowModal] = useState(false)
+  const [editing,   setEditing]   = useState<any>(null)
+  const [form,      setForm]      = useState<BranchForm>(empty)
 
-  const save = useMutation({
-    mutationFn: (d: any) => isEdit ? branchesApi.update(branch.id, d) : branchesApi.create(d),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['branches'] })
-      toast.success(isEdit ? t.notifications.updated : t.notifications.created)
-      onClose()
-    },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? t.errors.saveFailed),
+  const { data: branches, isLoading } = useQuery({
+    queryKey: ['branches'],
+    queryFn:  branchesApi.list,
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.name.trim()) return toast.error(t.errors.required)
-    save.mutate({
-      name:     form.name.trim(),
-      brand:    form.brand,
-      address:  form.address.trim() || null,
-      phone:    form.phone.trim()   || null,
-      isActive: form.isActive,
-    })
+  const createMut = useMutation({
+    mutationFn: branchesApi.create,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['branches'] }); closeModal(); toast.success('Branch created') },
+    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  })
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: any) => branchesApi.update(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['branches'] }); closeModal(); toast.success('Branch updated') },
+    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  })
+
+  const openCreate = () => { setEditing(null); setForm(empty); setShowModal(true) }
+  const openEdit   = (b: any) => {
+    setEditing(b)
+    setForm({ name: b.name, address: b.address ?? '', phone: b.phone ?? '', isActive: b.isActive })
+    setShowModal(true)
+  }
+  const closeModal = () => { setShowModal(false); setEditing(null) }
+
+  const submit = () => {
+    if (!form.name.trim()) return toast.error('Name required')
+    if (editing) updateMut.mutate({ id: editing.id, data: form })
+    else         createMut.mutate(form)
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface border border-border rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <h2 className="text-lg font-bold text-fg">
-            {isEdit ? t.branches.editBranch : t.branches.addBranch}
-          </h2>
-          <button onClick={onClose} className="text-muted hover:text-fg"><X size={20} /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+  const f = (k: keyof BranchForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
 
-          <div>
-            <label className="label">{t.branches.name} *</label>
-            <input value={form.name} onChange={e => set('name', e.target.value)}
-              placeholder="e.g. Main Store" className="input w-full" required />
-          </div>
-
-          <div>
-            <label className="label">{t.products.brand} *</label>
-            <div className="grid grid-cols-2 gap-2">
-              {['AVERO', 'JANZE'].map(b => (
-                <button
-                  key={b} type="button"
-                  onClick={() => set('brand', b)}
-                  className={clsx(
-                    'py-2.5 rounded-xl border text-sm font-semibold transition-all',
-                    form.brand === b
-                      ? b === 'AVERO'
-                        ? 'border-gold bg-gold-dim text-gold'
-                        : 'border-purple-500 bg-purple-900/20 text-purple-400'
-                      : 'border-border bg-surface2 text-muted hover:border-border/80'
-                  )}
-                >
-                  {b}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="label">{t.branches.address}</label>
-            <input value={form.address} onChange={e => set('address', e.target.value)}
-              placeholder="e.g. 15 Amir Temur St, Tashkent" className="input w-full" />
-          </div>
-
-          <div>
-            <label className="label">{t.branches.phone}</label>
-            <input value={form.phone} onChange={e => set('phone', e.target.value)}
-              placeholder="+998 90 123 45 67" className="input w-full" />
-          </div>
-
-          {isEdit && (
-            <div className="flex items-center gap-3">
-              <label className="label mb-0">{t.branches.active}</label>
-              <button type="button" onClick={() => set('isActive', !form.isActive)}
-                className={clsx('w-10 h-5 rounded-full transition-colors relative',
-                  form.isActive ? 'bg-jade' : 'bg-surface2 border border-border')}>
-                <span className={clsx('absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-                  form.isActive ? 'translate-x-5' : 'translate-x-0.5')} />
-              </button>
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">{t.common.cancel}</button>
-            <button type="submit" disabled={save.isPending} className="btn-primary flex-1 disabled:opacity-50">
-              {save.isPending ? t.common.loading : isEdit ? t.common.save : t.branches.addBranch}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function BranchesPage() {
-  const t                      = useT()
-  const [modal, setModal]      = useState(false)
-  const [editing, setEditing]  = useState<any>(null)
-
-  const { data: branches = [], isLoading } = useQuery({
-    queryKey: ['branches'],
-    queryFn:  () => branchesApi.list(),
-  })
-
-  const openCreate = () => { setEditing(null); setModal(true) }
-  const openEdit   = (b: any) => { setEditing(b); setModal(true) }
+  const busy = createMut.isPending || updateMut.isPending
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-fg">{t.branches.title}</h1>
-          <p className="text-sm text-muted mt-0.5">{(branches as any[]).length} {t.branches.title.toLowerCase()}</p>
-        </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
-          <Plus size={14} /> {t.branches.addBranch}
-        </button>
-      </div>
+    <div className="h-full flex flex-col">
+      <PageHeader title="Branches" subtitle="Manage store locations"
+        action={<button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-bg text-sm font-semibold rounded-lg hover:bg-gold/90"><Plus size={14} />Add Branch</button>}
+      />
 
-      {isLoading ? (
-        <div className="text-center py-16 text-muted">{t.common.loading}</div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {(branches as any[]).map((b: any) => (
-            <div key={b.id} className="card hover:border-gold/20 transition-colors group">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gold-dim border border-gold/30 flex items-center justify-center text-gold">
-                    <Building2 size={18} />
-                  </div>
+      <div className="flex-1 overflow-auto p-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32"><Loader2 size={24} className="animate-spin text-gold" /></div>
+        ) : branches?.length ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {branches.map((b: any) => (
+              <div key={b.id} className="bg-surface border border-border rounded-xl p-5">
+                <div className="flex items-start justify-between mb-3">
                   <div>
-                    <div className="font-semibold text-sm text-fg">{b.name}</div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className={clsx('text-xs px-1.5 py-0.5 rounded font-medium',
-                        b.brand === 'AVERO' ? 'bg-gold-dim text-gold' : 'bg-purple-900/30 text-purple-400'
-                      )}>{b.brand}</span>
-                      <div className={clsx('text-xs flex items-center gap-1', b.isActive ? 'text-jade' : 'text-rose')}>
-                        {b.isActive
-                          ? <><CheckCircle size={10} /> {t.branches.active}</>
-                          : <><XCircle    size={10} /> {t.branches.inactive}</>}
-                      </div>
-                    </div>
+                    <p className="text-base font-semibold text-fg">{b.name}</p>
+                    <Badge color={b.isActive ? 'green' : 'muted'} >{b.isActive ? 'Active' : 'Inactive'}</Badge>
                   </div>
+                  <button onClick={() => openEdit(b)} className="text-muted hover:text-gold"><Edit2 size={15} /></button>
                 </div>
-                <button onClick={() => openEdit(b)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-surface2 text-muted hover:text-fg transition-all">
-                  <Pencil size={14} />
-                </button>
+                <div className="space-y-1.5 text-xs text-muted">
+                  {b.address && <p>📍 {b.address}</p>}
+                  {b.phone   && <p>📞 {b.phone}</p>}
+                  <p className="font-mono text-surface2 text-[10px]">ID: {b.id.slice(-12)}</p>
+                </div>
               </div>
-              <div className="mt-3 space-y-1.5">
-                {b.address && (
-                  <div className="flex items-center gap-2 text-xs text-muted">
-                    <MapPin size={11} className="shrink-0" /><span className="truncate">{b.address}</span>
-                  </div>
-                )}
-                {b.phone && (
-                  <div className="flex items-center gap-2 text-xs text-muted">
-                    <Phone size={11} className="shrink-0" /><span>{b.phone}</span>
-                  </div>
-                )}
-                {!b.address && !b.phone && (
-                  <p className="text-xs text-muted/50 italic">{t.branches.noContact}</p>
-                )}
-              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState message="No branches configured" />
+        )}
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-fg">{editing ? 'Edit Branch' : 'Add Branch'}</h2>
+              <button onClick={closeModal} className="text-muted hover:text-fg"><X size={18} /></button>
             </div>
-          ))}
-          {!(branches as any[]).length && (
-            <div className="col-span-3 text-center py-16 text-muted">
-              <Building2 size={48} className="mx-auto mb-3 opacity-30" />
-              <p>{t.branches.noBranches}</p>
-              <button onClick={openCreate} className="btn-primary mt-4 inline-flex items-center gap-2">
-                <Plus size={14} /> {t.branches.addBranch}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Branch Name *</label>
+                <input value={form.name} onChange={f('name')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Address</label>
+                <input value={form.address} onChange={f('address')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Phone</label>
+                <input value={form.phone} onChange={f('phone')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              {editing && (
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                  <input type="checkbox" checked={form.isActive} onChange={f('isActive')} className="accent-gold" />
+                  Active
+                </label>
+              )}
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={closeModal} className="flex-1 py-2 border border-border rounded-lg text-sm text-muted hover:text-fg">Cancel</button>
+              <button onClick={submit} disabled={busy}
+                className="flex-1 py-2 bg-gold text-bg rounded-lg text-sm font-semibold hover:bg-gold/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {busy && <Loader2 size={14} className="animate-spin" />}
+                {editing ? 'Save' : 'Create'}
               </button>
             </div>
-          )}
+          </div>
         </div>
       )}
-
-      {modal && <BranchModal branch={editing} onClose={() => { setModal(false); setEditing(null) }} />}
     </div>
   )
 }

@@ -1,396 +1,220 @@
 import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '../lib/api'
-import { useMutation }   from '@tanstack/react-query'
-import { useAuthStore }  from '../store/authStore'
-import { useT }          from '../i18n'
-import { useLang, LANGUAGES } from '../i18n'
-import { useThemeStore, THEMES as ALL_THEMES } from '../store/themeStore'
-import toast             from 'react-hot-toast'
-import clsx              from 'clsx'
-import {
-  User, Store, Bell, Shield, Globe, Palette,
-  Save, ChevronRight, Star, Receipt, AlertTriangle,
-} from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
+import { PageHeader, Badge } from '../components/Shared'
+import { Loader2, Plus, X, Edit2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
-function Section({ title, children, icon: Icon }: { title: string; children: React.ReactNode; icon: any }) {
-  return (
-    <div className="card space-y-4">
-      <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <Icon size={16} className="text-gold" />
-        <h2 className="font-semibold text-sm">{title}</h2>
-      </div>
-      {children}
-    </div>
-  )
-}
+const ROLES = ['CASHIER','MANAGER','ADMIN','OWNER']
+const ROLE_COLORS: Record<string, string> = { CASHIER: 'muted', MANAGER: 'gold', ADMIN: 'green', OWNER: 'red' }
 
-// ── Toggle row ────────────────────────────────────────────────────────────────
-function ToggleRow({ label, sub, value, onChange }: {
-  label: string; sub?: string; value: boolean; onChange: (v: boolean) => void
-}) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <div>
-        <div className="text-sm font-medium">{label}</div>
-        {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
-      </div>
-      <button onClick={() => onChange(!value)}
-        className={clsx('w-11 h-6 rounded-full transition-colors relative flex-shrink-0',
-          value ? 'bg-jade' : 'bg-surface2 border border-border')}>
-        <span className={clsx('absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-          value ? 'translate-x-5' : 'translate-x-0.5')} />
-      </button>
-    </div>
-  )
-}
+interface UserForm { name: string; email: string; password: string; role: string }
+const emptyUser: UserForm = { name: '', email: '', password: '', role: 'CASHIER' }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-type Tab = 'profile' | 'store' | 'appearance' | 'notifications' | 'security'
-
-// ── Main ──────────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const user     = useAuthStore(s => s.user)
-  const t        = useT()
-  const { lang, setLang } = useLang()
-  const theme    = useThemeStore(s => s.theme)
-  const setTheme = useThemeStore(s => s.setTheme)
+  const { user: me, logout } = useAuthStore()
+  const qc = useQueryClient()
+  const [tab, setTab]             = useState<'users'|'profile'>('profile')
+  const [showUserModal, setShowUserModal] = useState(false)
+  const [editingUser,   setEditingUser]   = useState<any>(null)
+  const [userForm,      setUserForm]      = useState<UserForm>(emptyUser)
+  const [profileForm,   setProfileForm]   = useState({ name: me?.name ?? '', email: me?.email ?? '', currentPassword: '', newPassword: '' })
 
-  const [tab, setTab] = useState<Tab>('profile')
-
-  const TABS: { id: Tab; label: string; icon: any }[] = [
-    { id: 'profile',       label: t.settings.profile,       icon: User    },
-    { id: 'store',         label: t.settings.store,         icon: Store   },
-    { id: 'appearance',    label: t.settings.appearance,    icon: Palette },
-    { id: 'notifications', label: t.settings.notifications, icon: Bell    },
-    { id: 'security',      label: t.settings.security,      icon: Shield  },
-  ]
-
-  // ── Profile form ──────────────────────────────────────────────
-  const [profileForm, setProfile] = useState({
-    name:  user?.name  ?? '',
-    email: user?.email ?? '',
+  const { data: users, isLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn:  usersApi.list,
+    enabled:  tab === 'users',
   })
 
-  // ── Store form ────────────────────────────────────────────────
-  const [storeForm, setStore] = useState({
-    storeName:      'AVERO & Janze',
-    currency:       'UZS',
-    taxRate:        '12',
-    receiptHeader:  'Thank you for shopping with us!',
-    receiptFooter:  'Come back soon!',
-    loyaltyEnabled: true,
-    pointsPerUnit:  '1',
-    pointValue:     '100',
-    lowStockGlobal: '5',
+  const createUserMut = useMutation({
+    mutationFn: usersApi.create,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setShowUserModal(false); setUserForm(emptyUser); toast.success('User created') },
+    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
-  const setS = (k: string, v: any) => setStore(f => ({ ...f, [k]: v }))
-
-  // ── Notification prefs ────────────────────────────────────────
-  const [notifs, setNotifs] = useState({
-    lowStock:    true,
-    newOrder:    false,
-    dailyReport: true,
-    debtDue:     true,
+  const updateUserMut = useMutation({
+    mutationFn: ({ id, data }: any) => usersApi.update(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setShowUserModal(false); toast.success('User updated') },
+    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
-  const setN = (k: string, v: boolean) => setNotifs(f => ({ ...f, [k]: v }))
-
-  // ── Security form ─────────────────────────────────────────────
-  const [secForm, setSec] = useState({
-    currentPassword: '',
-    newPassword:     '',
-    confirmPassword: '',
+  const updateProfileMut = useMutation({
+    mutationFn: () => usersApi.update(me!.id, { name: profileForm.name, email: profileForm.email, ...(profileForm.newPassword ? { password: profileForm.newPassword } : {}) }),
+    onSuccess: () => toast.success('Profile updated'),
+    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
-  const profileMut = useMutation({
-    mutationFn: () => usersApi.updateProfile(profileForm),
-    onSuccess: (updated) => {
-      // Sync the auth store with updated name/email
-      useAuthStore.setState(s => ({ user: s.user ? { ...s.user, ...updated } : s.user }))
-      toast.success(t.settings.profileSaved)
-    },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? t.errors.saveFailed),
-  })
-
-  const saveProfile = () => {
-    if (!profileForm.name.trim()) return toast.error(t.settings.nameRequired)
-    profileMut.mutate()
+  const openCreateUser = () => { setEditingUser(null); setUserForm(emptyUser); setShowUserModal(true) }
+  const openEditUser   = (u: any) => {
+    setEditingUser(u)
+    setUserForm({ name: u.name, email: u.email, password: '', role: u.role })
+    setShowUserModal(true)
+  }
+  const submitUser = () => {
+    if (!userForm.name.trim() || !userForm.email.trim()) return toast.error('Name and email required')
+    if (!editingUser && !userForm.password) return toast.error('Password required for new user')
+    const payload = { ...userForm, password: userForm.password || undefined }
+    if (editingUser) updateUserMut.mutate({ id: editingUser.id, data: payload })
+    else             createUserMut.mutate(payload)
   }
 
-  const saveStore = () => toast.success(t.settings.storeSaved)
+  const fUser = (k: keyof UserForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setUserForm(v => ({ ...v, [k]: e.target.value }))
 
-  const passwordMut = useMutation({
-    mutationFn: () => usersApi.changePassword({ currentPassword: secForm.currentPassword, newPassword: secForm.newPassword }),
-    onSuccess: () => {
-      toast.success(t.settings.passwordUpdated)
-      setSec({ currentPassword: '', newPassword: '', confirmPassword: '' })
-    },
-    onError: (e: any) => toast.error(e.response?.data?.message ?? t.errors.saveFailed),
-  })
-
-  const savePassword = () => {
-    if (!secForm.currentPassword)         return toast.error(t.settings.enterCurrent)
-    if (secForm.newPassword.length < 6)   return toast.error(t.settings.passwordMin6)
-    if (secForm.newPassword !== secForm.confirmPassword) return toast.error(t.settings.passwordMismatch)
-    passwordMut.mutate()
-  }
-
+  const fProfile = (k: keyof typeof profileForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setProfileForm(v => ({ ...v, [k]: e.target.value }))
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <div>
-        <h1 className="text-xl font-bold">{t.settings.title}</h1>
-        <p className="text-sm text-muted mt-0.5">{t.settings.managePrefs}</p>
+    <div className="h-full flex flex-col">
+      <PageHeader title="Settings" subtitle="Account & system configuration" />
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 px-6 pt-3 border-b border-border">
+        {(['profile','users'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
+              tab === t ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-fg'
+            }`}>
+            {t === 'users' ? 'System Users' : 'My Profile'}
+          </button>
+        ))}
       </div>
 
-      <div className="flex gap-4">
-        {/* Sidebar nav */}
-        <div className="w-44 flex-shrink-0">
-          <nav className="space-y-0.5">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setTab(id)}
-                className={clsx('w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                  tab === id ? 'bg-gold-dim text-gold' : 'text-muted hover:bg-surface2 hover:text-fg')}>
-                <Icon size={15} />
-                {label}
-                {tab === id && <ChevronRight size={13} className="ml-auto" />}
-              </button>
-            ))}
-          </nav>
-          <div className="mt-6 px-3">
-            <p className="text-xs text-muted">ERP System v1.0</p>
-            <p className="text-xs text-muted">NestJS + React</p>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 space-y-4">
-
-          {/* ── Profile ── */}
-          {tab === 'profile' && (
-            <Section title={t.settings.yourProfile} icon={User}>
-              <div className="flex items-center gap-4 pb-3 border-b border-border">
-                <div className="w-14 h-14 rounded-full bg-gold-dim border-2 border-gold/30 flex items-center justify-center text-gold font-bold text-xl">
-                  {user?.name?.[0]?.toUpperCase() ?? 'U'}
-                </div>
-                <div>
-                  <div className="font-semibold">{user?.name}</div>
-                  <div className="text-xs text-muted">{user?.email}</div>
-                  <span className="text-xs bg-surface2 border border-border px-2 py-0.5 rounded mt-1 inline-block">
-                    {user?.role}
-                  </span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">{t.settings.fullName}</label>
-                  <input value={profileForm.name}
-                    onChange={e => setProfile(f => ({ ...f, name: e.target.value }))}
-                    className="input w-full" />
-                </div>
-                <div>
-                  <label className="label">{t.auth.email}</label>
-                  <input value={profileForm.email}
-                    onChange={e => setProfile(f => ({ ...f, email: e.target.value }))}
-                    type="email" className="input w-full" />
-                </div>
+      <div className="flex-1 overflow-auto p-6">
+        {/* Profile Tab */}
+        {tab === 'profile' && (
+          <div className="max-w-md space-y-6">
+            {/* Info card */}
+            <div className="bg-surface border border-border rounded-xl p-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-gold/10 flex items-center justify-center text-gold text-lg font-bold">
+                {me?.name?.[0] ?? 'U'}
               </div>
               <div>
-                <label className="label">{t.common.branch}</label>
-                <input value={user?.branch?.name ?? user?.branchId ?? '—'} disabled
-                  className="input w-full opacity-60 cursor-not-allowed" />
+                <p className="text-sm font-semibold text-fg">{me?.name}</p>
+                <p className="text-xs text-muted">{me?.email}</p>
+                <Badge color={ROLE_COLORS[me?.role ?? 'CASHIER']}>{me?.role}</Badge>
               </div>
-              <button onClick={saveProfile} disabled={profileMut.isPending} className="btn-primary flex items-center gap-2 disabled:opacity-50">
-                <Save size={14} /> {profileMut.isPending ? t.common.loading : t.settings.saveProfile}
+            </div>
+
+            <div className="bg-surface border border-border rounded-xl p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-fg">Update Profile</h3>
+              <div>
+                <label className="block text-xs text-muted mb-1">Name</label>
+                <input value={profileForm.name} onChange={fProfile('name')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Email</label>
+                <input type="email" value={profileForm.email} onChange={fProfile('email')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">New Password (leave blank to keep current)</label>
+                <input type="password" value={profileForm.newPassword} onChange={fProfile('newPassword')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <button onClick={() => updateProfileMut.mutate()} disabled={updateProfileMut.isPending}
+                className="w-full py-2 bg-gold text-bg rounded-lg text-sm font-semibold hover:bg-gold/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {updateProfileMut.isPending && <Loader2 size={14} className="animate-spin" />}
+                Save Changes
               </button>
-            </Section>
-          )}
-
-          {/* ── Store ── */}
-          {tab === 'store' && (
-            <div className="space-y-4">
-              <Section title={t.settings.storeInfo} icon={Store}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">{t.settings.storeName}</label>
-                    <input value={storeForm.storeName} onChange={e => setS('storeName', e.target.value)} className="input w-full" />
-                  </div>
-                  <div>
-                    <label className="label">{t.common.currency}</label>
-                    <select value={storeForm.currency} onChange={e => setS('currency', e.target.value)} className="input w-full">
-                      <option value="UZS">UZS — Uzbek Som</option>
-                      <option value="USD">USD — US Dollar</option>
-                      <option value="EUR">EUR — Euro</option>
-                      <option value="RUB">RUB — Russian Ruble</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="label">{t.settings.defaultTaxRate}</label>
-                  <input value={storeForm.taxRate} onChange={e => setS('taxRate', e.target.value)}
-                    type="number" min="0" max="100" step="0.5" className="input w-40" />
-                </div>
-                <button onClick={saveStore} className="btn-primary flex items-center gap-2">
-                  <Save size={14} /> {t.settings.saveStore}
-                </button>
-              </Section>
-
-              <Section title={t.settings.receiptSettings} icon={Receipt}>
-                <div>
-                  <label className="label">{t.settings.receiptHeader}</label>
-                  <input value={storeForm.receiptHeader} onChange={e => setS('receiptHeader', e.target.value)}
-                    placeholder={t.settings.receiptHeaderPh} className="input w-full" />
-                </div>
-                <div>
-                  <label className="label">{t.settings.receiptFooter}</label>
-                  <input value={storeForm.receiptFooter} onChange={e => setS('receiptFooter', e.target.value)}
-                    placeholder={t.settings.receiptFooterPh} className="input w-full" />
-                </div>
-                <button onClick={saveStore} className="btn-primary flex items-center gap-2">
-                  <Save size={14} /> {t.settings.saveStore}
-                </button>
-              </Section>
-
-              <Section title={t.settings.loyaltyProgram} icon={Star}>
-                <ToggleRow label={t.settings.enableLoyalty}
-                  sub={t.settings.enableLoyaltySub}
-                  value={storeForm.loyaltyEnabled}
-                  onChange={v => setS('loyaltyEnabled', v)} />
-                {storeForm.loyaltyEnabled && (
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="label">{t.settings.pointsPer1000}</label>
-                      <input value={storeForm.pointsPerUnit} onChange={e => setS('pointsPerUnit', e.target.value)}
-                        type="number" min="0" step="0.1" className="input w-full" />
-                    </div>
-                    <div>
-                      <label className="label">{t.settings.pointValue}</label>
-                      <input value={storeForm.pointValue} onChange={e => setS('pointValue', e.target.value)}
-                        type="number" min="1" className="input w-full" />
-                    </div>
-                  </div>
-                )}
-                <button onClick={saveStore} className="btn-primary flex items-center gap-2">
-                  <Save size={14} /> {t.settings.saveStore}
-                </button>
-              </Section>
-
-              <Section title={t.settings.inventoryDefaults} icon={AlertTriangle}>
-                <div>
-                  <label className="label">{t.settings.globalLowStock}</label>
-                  <p className="text-xs text-muted mb-2">{t.settings.globalLowStockSub}</p>
-                  <input value={storeForm.lowStockGlobal} onChange={e => setS('lowStockGlobal', e.target.value)}
-                    type="number" min="1" className="input w-32" />
-                </div>
-                <button onClick={saveStore} className="btn-primary flex items-center gap-2">
-                  <Save size={14} /> {t.settings.saveStore}
-                </button>
-              </Section>
             </div>
-          )}
 
-          {/* ── Appearance ── */}
-          {tab === 'appearance' && (
-            <div className="space-y-4">
-              <Section title={t.settings.theme} icon={Palette}>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                  {ALL_THEMES.map((th) => (
-                    <button key={th.id} onClick={() => setTheme(th.id)}
-                      className={clsx('flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-colors',
-                        theme === th.id
-                          ? 'border-gold bg-gold-dim text-gold'
-                          : 'border-border hover:border-gold/40 text-muted hover:text-fg')}>
-                      <span className="text-xl">{th.emoji}</span>
-                      <span className="text-xs font-medium">{th.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </Section>
-
-              <Section title={t.settings.language} icon={Globe}>
-                <div className="space-y-2">
-                  {LANGUAGES.map(({ code, label, flag }) => (
-                    <button key={code}
-                      onClick={() => { setLang(code as any); toast.success(t.settings.langChanged) }}
-                      className={clsx('w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-colors text-left',
-                        lang === code ? 'border-gold bg-gold-dim' : 'border-border hover:border-gold/40')}>
-                      <span className="text-xl">{flag}</span>
-                      <span className={clsx('font-medium text-sm', lang === code ? 'text-gold' : 'text-fg')}>{label}</span>
-                      {lang === code && <span className="ml-auto text-xs text-gold">{t.settings.activeLanguage}</span>}
-                    </button>
-                  ))}
-                </div>
-              </Section>
-            </div>
-          )}
-
-          {/* ── Notifications ── */}
-          {tab === 'notifications' && (
-            <Section title={t.settings.notifPrefs} icon={Bell}>
-              <ToggleRow label={t.settings.lowStockAlerts}
-                sub={t.settings.lowStockAlertsSub}
-                value={notifs.lowStock} onChange={v => setN('lowStock', v)} />
-              <ToggleRow label={t.settings.newOrderAlerts}
-                sub={t.settings.newOrderAlertsSub}
-                value={notifs.newOrder} onChange={v => setN('newOrder', v)} />
-              <ToggleRow label={t.settings.dailySummary}
-                sub={t.settings.dailySummarySub}
-                value={notifs.dailyReport} onChange={v => setN('dailyReport', v)} />
-              <ToggleRow label={t.settings.debtReminders}
-                sub={t.settings.debtRemindersSub}
-                value={notifs.debtDue} onChange={v => setN('debtDue', v)} />
-              <button onClick={() => toast.success(t.settings.prefsSaved)}
-                className="btn-primary flex items-center gap-2 mt-2">
-                <Save size={14} /> {t.settings.savePreferences}
+            <div className="bg-surface border border-border rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-fg mb-3">Danger Zone</h3>
+              <button onClick={() => logout()}
+                className="px-4 py-2 border border-rose text-rose rounded-lg text-sm hover:bg-rose/10 transition-colors">
+                Sign out
               </button>
-            </Section>
-          )}
-
-          {/* ── Security ── */}
-          {tab === 'security' && (
-            <div className="space-y-4">
-              <Section title={t.settings.changePassword} icon={Shield}>
-                <div>
-                  <label className="label">{t.settings.currentPassword}</label>
-                  <input value={secForm.currentPassword}
-                    onChange={e => setSec(f => ({ ...f, currentPassword: e.target.value }))}
-                    type="password" placeholder="••••••••" className="input w-full" />
-                </div>
-                <div>
-                  <label className="label">{t.settings.newPassword}</label>
-                  <input value={secForm.newPassword}
-                    onChange={e => setSec(f => ({ ...f, newPassword: e.target.value }))}
-                    type="password" placeholder={t.settings.minChars} className="input w-full" />
-                </div>
-                <div>
-                  <label className="label">{t.settings.confirmPassword}</label>
-                  <input value={secForm.confirmPassword}
-                    onChange={e => setSec(f => ({ ...f, confirmPassword: e.target.value }))}
-                    type="password" placeholder={t.settings.repeatPassword} className="input w-full" />
-                </div>
-                <button onClick={savePassword} disabled={passwordMut.isPending} className="btn-primary flex items-center gap-2 disabled:opacity-50">
-                  <Save size={14} /> {passwordMut.isPending ? t.common.loading : t.settings.updatePassword}
-                </button>
-              </Section>
-
-              <Section title={t.settings.accountInfo} icon={User}>
-                <div className="space-y-2 text-sm">
-                  {[
-                    [t.employees.role, user?.role],
-                    [t.common.branch,  user?.branch?.name ?? user?.branchId],
-                    [t.settings.accountStatus, t.common.active],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="flex justify-between py-1 border-b border-border last:border-0">
-                      <span className="text-muted">{label}</span>
-                      <span className="font-medium">{value ?? '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              </Section>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Users Tab */}
+        {tab === 'users' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-muted">Manage system access</p>
+              <button onClick={openCreateUser} className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-bg text-sm font-semibold rounded-lg hover:bg-gold/90">
+                <Plus size={14} /> Add User
+              </button>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32"><Loader2 size={24} className="animate-spin text-gold" /></div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-bg border-b border-border">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs text-muted font-medium">Name</th>
+                    <th className="text-left px-4 py-3 text-xs text-muted font-medium">Email</th>
+                    <th className="text-left px-4 py-3 text-xs text-muted font-medium">Role</th>
+                    <th className="text-left px-4 py-3 text-xs text-muted font-medium">Status</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(users ?? []).map((u: any) => (
+                    <tr key={u.id} className="hover:bg-surface/50">
+                      <td className="px-4 py-3 text-sm text-fg font-medium">{u.name}</td>
+                      <td className="px-4 py-3 text-xs text-muted">{u.email}</td>
+                      <td className="px-4 py-3"><Badge color={ROLE_COLORS[u.role]}>{u.role}</Badge></td>
+                      <td className="px-4 py-3"><Badge color={u.isActive ? 'green' : 'muted'}>{u.isActive ? 'Active' : 'Inactive'}</Badge></td>
+                      <td className="px-4 py-3">
+                        {u.id !== me?.id && (
+                          <button onClick={() => openEditUser(u)} className="text-muted hover:text-gold"><Edit2 size={14} /></button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* User Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-fg">{editingUser ? 'Edit User' : 'Add User'}</h2>
+              <button onClick={() => setShowUserModal(false)} className="text-muted hover:text-fg"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-muted mb-1">Name *</label>
+                <input value={userForm.name} onChange={fUser('name')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Email *</label>
+                <input type="email" value={userForm.email} onChange={fUser('email')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">{editingUser ? 'New Password (optional)' : 'Password *'}</label>
+                <input type="password" value={userForm.password} onChange={fUser('password')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted mb-1">Role</label>
+                <select value={userForm.role} onChange={fUser('role')}
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none">
+                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowUserModal(false)} className="flex-1 py-2 border border-border rounded-lg text-sm text-muted hover:text-fg">Cancel</button>
+              <button onClick={submitUser} disabled={createUserMut.isPending || updateUserMut.isPending}
+                className="flex-1 py-2 bg-gold text-bg rounded-lg text-sm font-semibold hover:bg-gold/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                {(createUserMut.isPending || updateUserMut.isPending) && <Loader2 size={14} className="animate-spin" />}
+                {editingUser ? 'Save' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
