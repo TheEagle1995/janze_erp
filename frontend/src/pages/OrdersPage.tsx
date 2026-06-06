@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef }  from 'react'
 import { ordersApi, productsApi, customersApi } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { customersApi } from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import { useT }         from '../i18n'
 import { fmt }          from '../utils/format'

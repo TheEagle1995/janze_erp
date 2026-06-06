@@ -7,8 +7,7 @@ import {
   ChevronRight, Star, ShoppingBag, Clock, BarChart2,
   ArrowUpRight, ArrowDownRight, Lightbulb, Target,
 } from 'lucide-react'
-import { analyticsApi } from '../lib/api'
-import { suppliersApi } from '../lib/api'
+import { analyticsApi, suppliersApi } from '../lib/api'
 import { fmt }          from '../utils/format'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────

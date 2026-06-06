@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { usersApi } from '../lib/api'
+import { usersApi, branchesApi } from '../lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { branchesApi } from '../lib/api'
 import { useT } from '../i18n'
 import toast from 'react-hot-toast'
 import { Plus, Pencil, X, User, ShieldCheck, Eye, EyeOff } from 'lucide-react'
