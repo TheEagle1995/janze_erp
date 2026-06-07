@@ -143,6 +143,20 @@ export const financeApi = {
   journals:      (p?: any)             => http.get('/finance/journals',           { params: p }).then(r => r.data),
   budgets:       (p?: any)             => http.get('/finance/budgets',            { params: p }).then(r => r.data),
   cashRecon:     (p?: any)             => http.get('/finance/cash-reconciliations', { params: p }).then(r => r.data),
+
+  // Smena (shift) management
+  openShift:      (d: { branchId: string; cashierId: string; openingCash: number }) =>
+    http.post('/finance/reconciliation/open-shift', d).then(r => r.data),
+  closeShift:     (id: string, d: { countedCash: number; discrepancyNote?: string }) =>
+    http.patch(`/finance/reconciliation/${id}/close`, d).then(r => r.data),
+  currentShift:   (branchId?: string, cashierId?: string) =>
+    http.get('/finance/reconciliation/current', { params: { branchId, cashierId } }).then(r => r.data),
+  shiftHistory:   (branchId?: string, days = 30) =>
+    http.get('/finance/reconciliation/history', { params: { branchId, days } }).then(r => r.data),
+  cashFlow:      (p?: any)             => http.get('/finance/reports/cash-flow',              { params: p }).then(r => r.data),
+  dailyCashFlow: (branchId?: string, days = 30) =>
+    http.get('/finance/reports/cash-flow/daily', { params: { branchId, days } }).then(r => r.data),
+  cashProjection:(branchId?: string)   => http.get('/finance/reports/cash-flow/projection',  { params: { branchId } }).then(r => r.data),
 }
 
 // ── Suppliers ─────────────────────────────────────────────────────────────────

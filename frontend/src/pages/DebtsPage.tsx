@@ -1,267 +1,712 @@
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { debtsApi, customersApi, suppliersApi } from '../lib/api'
-import { useState } from 'react'
-import { PageHeader, Badge, EmptyState, fmt, fmtDate } from '../components/Shared'
-import { Plus, X, Loader2, Search, CheckCircle } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { debtsApi } from '../lib/api'
+import { fmt }      from '../utils/format'
+import { useT }     from '../i18n'
+import toast        from 'react-hot-toast'
+import clsx         from 'clsx'
+import dayjs        from 'dayjs'
+import {
+  Plus, X, Pencil, Trash2, CreditCard, Clock,
+  CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Search,
+  DollarSign, TrendingDown, ReceiptText, Send, BarChart2,
+  RefreshCw, MessageSquare, Copy, ArrowUpDown, ArrowUp, ArrowDown,
+} from 'lucide-react'
 
-type DebtDir = 'RECEIVABLE' | 'PAYABLE'
-type DebtStatus = 'OPEN' | 'PARTIAL' | 'PAID' | 'OVERDUE'
+type DebtSortKey = 'customerName' | 'amount' | 'remaining' | 'dueDate' | 'daysOverdue' | 'createdAt'
+type SortDir2    = 'asc' | 'desc'
 
-const STATUS_COLORS: Record<string, string> = { OPEN: 'gold', PARTIAL: 'gold', PAID: 'green', OVERDUE: 'red' }
-
-interface DebtForm {
-  direction: DebtDir; customerId: string; supplierId: string; amount: string; description: string; dueDate: string
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const STATUS_COLORS: Record<string, string> = {
+  PAID:    'text-jade bg-jade/10 border-jade/20',
+  UNPAID:  'text-rose bg-rose/10 border-rose/20',
+  PARTIAL: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  OVERDUE: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
 }
-const empty: DebtForm = { direction: 'RECEIVABLE', customerId: '', supplierId: '', amount: '', description: '', dueDate: '' }
 
-export default function DebtsPage() {
-  const qc = useQueryClient()
-  const [search,    setSearch]    = useState('')
-  const [status,    setStatus]    = useState('')
-  const [direction, setDirection] = useState('')
-  const [page,      setPage]      = useState(1)
-  const [showModal, setShowModal] = useState(false)
-  const [showPayModal, setShowPayModal] = useState(false)
-  const [selected,  setSelected]  = useState<any>(null)
-  const [form,      setForm]      = useState<DebtForm>(empty)
-  const [payAmount, setPayAmount] = useState('')
+function statusBadge(s: string, label: string) {
+  return (
+    <span className={clsx('text-xs px-2 py-0.5 rounded border font-medium', STATUS_COLORS[s] ?? 'text-muted border-border')}>
+      {label}
+    </span>
+  )
+}
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['debts', search, status, direction, page],
-    queryFn:  () => debtsApi.list({
-      search: search || undefined,
-      status: status || undefined,
-      direction: direction || undefined,
-      page, limit: 25,
-    }),
+// ── Debt Modal ─────────────────────────────────────────────────────────────────
+function DebtModal({ debt, onClose }: { debt: any | null; onClose: () => void }) {
+  const qc     = useQueryClient()
+  const t      = useT()
+  const isEdit = !!debt
+
+  const [form, setForm] = useState({
+    customerName: debt?.customerName ?? '',
+    phone:        debt?.phone        ?? '',
+    amount:       debt?.amount       ?? '',
+    currency:     debt?.currency     ?? 'UZS',
+    dueDate:      debt?.dueDate ? dayjs(debt.dueDate).format('YYYY-MM-DD') : '',
+    description:  debt?.description  ?? '',
+    notes:        debt?.notes        ?? '',
   })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  const { data: customers } = useQuery({
-    queryKey: ['customers.all'],
-    queryFn:  () => customersApi.list({ limit: 200 }),
-  })
-  const { data: suppliers } = useQuery({
-    queryKey: ['suppliers.all'],
-    queryFn:  () => suppliersApi.list({ limit: 200 }),
-  })
-
-  const debts = data?.data ?? []
-  const meta  = data?.meta ?? {}
-
-  const createMut = useMutation({
-    mutationFn: debtsApi.create,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['debts'] }); setShowModal(false); setForm(empty); toast.success('Debt recorded') },
-    onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
-  })
-
-  const payMut = useMutation({
-    mutationFn: ({ id, amount }: any) => debtsApi.pay(id, { amount: Number(amount) }),
+  const save = useMutation({
+    mutationFn: (d: any) => isEdit ? debtsApi.update(debt.id, d) : debtsApi.create(d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['debts'] })
-      setShowPayModal(false)
-      setPayAmount('')
-      toast.success('Payment recorded')
+      qc.invalidateQueries({ queryKey: ['debts-summary'] })
+      toast.success(isEdit ? t.notifications.updated : t.notifications.created)
+      onClose()
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+    onError: (e: any) => toast.error(e.response?.data?.message ?? t.errors.saveFailed),
   })
 
-  const submit = () => {
-    if (!form.amount) return toast.error('Amount required')
-    if (form.direction === 'RECEIVABLE' && !form.customerId) return toast.error('Customer required')
-    if (form.direction === 'PAYABLE'    && !form.supplierId) return toast.error('Supplier required')
-    createMut.mutate({ ...form, amount: Number(form.amount) })
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.customerName.trim()) return toast.error(t.errors.required)
+    if (!form.amount)              return toast.error(t.errors.required)
+    save.mutate({
+      customerName: form.customerName.trim(),
+      phone:        form.phone.trim() || null,
+      amount:       Number(form.amount),
+      currency:     form.currency,
+      dueDate:      form.dueDate || null,
+      description:  form.description.trim() || null,
+      notes:        form.notes.trim() || null,
+    })
   }
 
-  const f = (k: keyof DebtForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm(v => ({ ...v, [k]: e.target.value }))
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <h2 className="text-lg font-bold">{isEdit ? t.debts.editDebt : t.debts.addDebt}</h2>
+          <button onClick={onClose} className="text-muted hover:text-white"><X size={20} /></button>
+        </div>
+        <form onSubmit={submit} className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="label">{t.debts.customer} *</label>
+              <input value={form.customerName} onChange={e => set('customerName', e.target.value)}
+                placeholder="Full name" className="input w-full" required />
+            </div>
+            <div>
+              <label className="label">{t.common.phone}</label>
+              <input value={form.phone} onChange={e => set('phone', e.target.value)}
+                placeholder="+998 90 …" className="input w-full" />
+            </div>
+            <div>
+              <label className="label">{t.debts.currency}</label>
+              <select value={form.currency} onChange={e => set('currency', e.target.value)} className="input w-full">
+                <option value="UZS">UZS</option>
+                <option value="USD">USD</option>
+                <option value="RUB">RUB</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="label">{t.debts.amount} *</label>
+              <input value={form.amount} onChange={e => set('amount', e.target.value)}
+                type="number" min="0" step="any" placeholder="0" className="input w-full font-mono" required />
+            </div>
+            <div className="col-span-2">
+              <label className="label">{t.debts.dueDate}</label>
+              <input value={form.dueDate} onChange={e => set('dueDate', e.target.value)}
+                type="date" className="input w-full" />
+            </div>
+            <div className="col-span-2">
+              <label className="label">{t.debts.description}</label>
+              <input value={form.description} onChange={e => set('description', e.target.value)}
+                placeholder="Reason for debt…" className="input w-full" />
+            </div>
+            <div className="col-span-2">
+              <label className="label">{t.debts.notes}</label>
+              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                rows={2} className="input w-full resize-none" placeholder="Internal notes…" />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">{t.common.cancel}</button>
+            <button type="submit" disabled={save.isPending} className="btn-primary flex-1 disabled:opacity-50">
+              {save.isPending ? t.common.loading : isEdit ? t.common.save : t.debts.addDebt}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Payment Modal ─────────────────────────────────────────────────────────────
+function PaymentModal({ debt, onClose }: { debt: any; onClose: () => void }) {
+  const qc  = useQueryClient()
+  const t   = useT()
+  const remaining = Number(debt.amount) - Number(debt.paid)
+
+  const [form, setForm] = useState({ amount: '', method: 'CASH', paidAt: dayjs().format('YYYY-MM-DD'), notes: '' })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const pay = useMutation({
+    mutationFn: (d: any) => debtsApi.addPayment(debt.id, d),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['debts'] })
+      qc.invalidateQueries({ queryKey: ['debts-summary'] })
+      toast.success(t.notifications.paymentAdded)
+      onClose()
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message ?? t.errors.saveFailed),
+  })
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const amt = Number(form.amount)
+    if (!amt || amt <= 0)   return toast.error('Enter a valid amount')
+    if (amt > remaining)    return toast.error(`Max: ${fmt.currency(remaining)}`)
+    pay.mutate({ amount: amt, method: form.method, paidAt: form.paidAt, notes: form.notes || null })
+  }
 
   return (
-    <div className="h-full flex flex-col">
-      <PageHeader title="Debts" subtitle="Receivables & payables"
-        action={<button onClick={() => { setForm(empty); setShowModal(true) }} className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-bg text-sm font-semibold rounded-lg hover:bg-gold/90"><Plus size={14} />Add Debt</button>}
-      />
-
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Search…"
-            className="bg-surface border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-fg w-44 focus:outline-none focus:border-gold/60" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <h2 className="text-lg font-bold">{t.debts.recordPayment}</h2>
+          <button onClick={onClose} className="text-muted hover:text-white"><X size={20} /></button>
         </div>
-        <select value={direction} onChange={e => { setDirection(e.target.value); setPage(1) }}
-          className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg focus:outline-none">
-          <option value="">All directions</option>
-          <option value="RECEIVABLE">Receivable</option>
-          <option value="PAYABLE">Payable</option>
-        </select>
-        <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
-          className="bg-surface border border-border rounded-lg px-3 py-1.5 text-sm text-fg focus:outline-none">
-          <option value="">All statuses</option>
-          <option value="OPEN">Open</option>
-          <option value="PARTIAL">Partial</option>
-          <option value="PAID">Paid</option>
-          <option value="OVERDUE">Overdue</option>
-        </select>
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-32"><Loader2 size={24} className="animate-spin text-gold" /></div>
-        ) : debts.length ? (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-surface border-b border-border">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs text-muted font-medium">Party</th>
-                <th className="text-left px-4 py-3 text-xs text-muted font-medium">Direction</th>
-                <th className="text-left px-4 py-3 text-xs text-muted font-medium">Description</th>
-                <th className="text-right px-4 py-3 text-xs text-muted font-medium">Amount</th>
-                <th className="text-right px-4 py-3 text-xs text-muted font-medium">Paid</th>
-                <th className="text-right px-4 py-3 text-xs text-muted font-medium">Remaining</th>
-                <th className="text-left px-4 py-3 text-xs text-muted font-medium">Due</th>
-                <th className="text-left px-4 py-3 text-xs text-muted font-medium">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {debts.map((d: any) => {
-                const party = d.customer?.name ?? d.supplier?.name ?? '—'
-                const remaining = d.amount - (d.paidAmount ?? 0)
-                return (
-                  <tr key={d.id} className="hover:bg-surface2/30">
-                    <td className="px-4 py-3 text-sm text-fg">{party}</td>
-                    <td className="px-4 py-3"><Badge color={d.direction === 'RECEIVABLE' ? 'jade' : 'rose'}>{d.direction}</Badge></td>
-                    <td className="px-4 py-3 text-xs text-muted max-w-[160px] truncate">{d.description ?? '—'}</td>
-                    <td className="px-4 py-3 text-right text-xs font-mono text-fg">{fmt(d.amount)}</td>
-                    <td className="px-4 py-3 text-right text-xs font-mono text-jade">{fmt(d.paidAmount ?? 0)}</td>
-                    <td className="px-4 py-3 text-right text-xs font-mono text-rose">{fmt(remaining)}</td>
-                    <td className="px-4 py-3 text-xs text-muted">{d.dueDate ? fmtDate(d.dueDate) : '—'}</td>
-                    <td className="px-4 py-3"><Badge color={STATUS_COLORS[d.status]}>{d.status}</Badge></td>
-                    <td className="px-4 py-3">
-                      {d.status !== 'PAID' && (
-                        <button onClick={() => { setSelected(d); setPayAmount(String(remaining)); setShowPayModal(true) }}
-                          className="text-muted hover:text-jade flex items-center gap-1 text-xs">
-                          <CheckCircle size={12} /> Pay
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <EmptyState message="No debts found" />
-        )}
-        {meta.lastPage > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t border-border text-sm text-muted">
-            <span>Page {page} of {meta.lastPage}</span>
-            <div className="flex gap-2">
-              <button disabled={page === 1} onClick={() => setPage(p => p-1)} className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-surface2">Prev</button>
-              <button disabled={page === meta.lastPage} onClick={() => setPage(p => p+1)} className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-surface2">Next</button>
+        <form onSubmit={submit} className="p-5 space-y-4">
+          <div className="bg-surface2 rounded-xl p-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted">{t.debts.customer}</span>
+              <span className="font-medium">{debt.customerName}</span>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-muted">{t.debts.remaining}</span>
+              <span className="font-mono font-bold text-rose">{fmt.currency(remaining)}</span>
             </div>
           </div>
-        )}
+          <div>
+            <label className="label">{t.debts.paymentAmount} *</label>
+            <div className="flex gap-2">
+              <input value={form.amount} onChange={e => set('amount', e.target.value)}
+                type="number" min="1" max={remaining} step="any" placeholder="0"
+                className="input flex-1 font-mono" autoFocus required />
+              <button type="button" onClick={() => set('amount', String(remaining))}
+                className="btn-secondary text-xs px-3 whitespace-nowrap">Max</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">{t.debts.paymentMethod}</label>
+              <select value={form.method} onChange={e => set('method', e.target.value)} className="input w-full">
+                <option value="CASH">Cash</option>
+                <option value="CARD">Card</option>
+                <option value="TRANSFER">Transfer</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">{t.debts.paymentDate}</label>
+              <input value={form.paidAt} onChange={e => set('paidAt', e.target.value)}
+                type="date" className="input w-full" />
+            </div>
+          </div>
+          <div>
+            <label className="label">{t.common.notes}</label>
+            <input value={form.notes} onChange={e => set('notes', e.target.value)}
+              placeholder="Optional note…" className="input w-full" />
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">{t.common.cancel}</button>
+            <button type="submit" disabled={pay.isPending} className="btn-primary flex-1 disabled:opacity-50">
+              {pay.isPending ? t.common.loading : t.debts.addPayment}
+            </button>
+          </div>
+        </form>
       </div>
+    </div>
+  )
+}
 
-      {/* Add Debt Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-fg">Record Debt</h2>
-              <button onClick={() => setShowModal(false)} className="text-muted hover:text-fg"><X size={18} /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-muted mb-1">Direction</label>
-                <div className="flex gap-2">
-                  {(['RECEIVABLE','PAYABLE'] as DebtDir[]).map(d => (
-                    <button key={d} onClick={() => setForm(v => ({ ...v, direction: d }))}
-                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
-                        form.direction === d ? 'bg-gold text-bg' : 'bg-bg border border-border text-muted hover:text-fg'
-                      }`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {form.direction === 'RECEIVABLE' ? (
-                <div>
-                  <label className="block text-xs text-muted mb-1">Customer *</label>
-                  <select value={form.customerId} onChange={f('customerId')}
-                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none">
-                    <option value="">— select —</option>
-                    {customers?.data?.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs text-muted mb-1">Supplier *</label>
-                  <select value={form.supplierId} onChange={f('supplierId')}
-                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none">
-                    <option value="">— select —</option>
-                    {suppliers?.data?.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-muted mb-1">Amount *</label>
-                  <input type="number" value={form.amount} onChange={f('amount')} min={0}
-                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
-                </div>
-                <div>
-                  <label className="block text-xs text-muted mb-1">Due Date</label>
-                  <input type="date" value={form.dueDate} onChange={f('dueDate')}
-                    className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-muted mb-1">Description</label>
-                <input value={form.description} onChange={f('description')}
-                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2 border border-border rounded-lg text-sm text-muted hover:text-fg">Cancel</button>
-              <button onClick={submit} disabled={createMut.isPending}
-                className="flex-1 py-2 bg-gold text-bg rounded-lg text-sm font-semibold hover:bg-gold/90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {createMut.isPending && <Loader2 size={14} className="animate-spin" />}
-                Record
+// ── Remind Modal ──────────────────────────────────────────────────────────────
+function RemindModal({ debt, onClose }: { debt: any; onClose: () => void }) {
+  const remaining = Number(debt.amount) - Number(debt.paid)
+  const dueStr    = debt.dueDate ? dayjs(debt.dueDate).format('DD.MM.YYYY') : null
+
+  const message = [
+    `Assalomu alaykum, ${debt.customerName}!`,
+    ``,
+    `Sizda bizda qarzdorlik bor:`,
+    `💰 Summa: ${remaining.toLocaleString('uz-UZ')} so'm`,
+    dueStr ? `📅 Muddat: ${dueStr}` : null,
+    debt.description ? `📝 Izoh: ${debt.description}` : null,
+    ``,
+    `Iltimos, to'lovni amalga oshiring.`,
+    `Rahmat! 🙏`,
+  ].filter(Boolean).join('\n')
+
+  // Normalize phone: strip +, spaces, dashes
+  const rawPhone  = (debt.phone ?? '').replace(/\D/g, '')
+  const waPhone   = rawPhone.startsWith('998') ? rawPhone : rawPhone ? `998${rawPhone}` : ''
+  const waUrl     = waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}` : null
+  const tgUrl     = waPhone ? `https://t.me/+${waPhone}` : null
+
+  const copyText = () => {
+    navigator.clipboard.writeText(message)
+    toast.success('Nusxa olindi!')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <MessageSquare size={16} className="text-jade" />
+            <h2 className="font-bold text-sm">Eslatma yuborish</h2>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-fg"><X size={18} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Message preview */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-muted uppercase tracking-wide">Xabar</label>
+              <button onClick={copyText} className="flex items-center gap-1 text-xs text-muted hover:text-gold transition-colors">
+                <Copy size={11} /> Nusxa
               </button>
             </div>
+            <div className="bg-surface2 border border-border rounded-xl p-3 text-sm whitespace-pre-wrap font-mono text-xs text-fg leading-relaxed">
+              {message}
+            </div>
           </div>
+
+          {/* Send buttons */}
+          <div className="space-y-2">
+            {waUrl ? (
+              <>
+                <a href={waUrl} target="_blank" rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl text-sm font-semibold transition-colors">
+                  <Send size={14} /> WhatsApp orqali yuborish
+                </a>
+                <a href={tgUrl!} target="_blank" rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-400 text-white rounded-xl text-sm font-semibold transition-colors">
+                  <Send size={14} /> Telegram orqali yuborish
+                </a>
+              </>
+            ) : (
+              <div className="text-xs text-muted bg-surface2 rounded-xl px-4 py-3 flex items-center gap-2">
+                <AlertTriangle size={13} className="text-amber-400" />
+                Telefon raqam yo'q — xabarni nusxa olib qo'lda yuboring
+              </div>
+            )}
+            <button onClick={copyText}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-border rounded-xl text-sm text-muted hover:text-fg hover:border-gold/40 transition-colors">
+              <Copy size={13} /> Xabarni nusxalash
+            </button>
+          </div>
+
+          {debt.phone && (
+            <p className="text-xs text-muted text-center">📱 {debt.phone}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Debt Row (expandable) ─────────────────────────────────────────────────────
+function DebtRow({ debt, onEdit, onPay, onDelete, onRemind }: {
+  debt: any; onEdit: () => void; onPay: () => void; onDelete: () => void; onRemind: () => void
+}) {
+  const t         = useT()
+  const [open, setOpen] = useState(false)
+  const remaining = Number(debt.amount) - Number(debt.paid)
+  const pct       = Number(debt.amount) > 0 ? (Number(debt.paid) / Number(debt.amount)) * 100 : 0
+  const daysOver  = debt.dueDate && dayjs().isAfter(dayjs(debt.dueDate)) && debt.status !== 'PAID'
+    ? dayjs().diff(dayjs(debt.dueDate), 'day') : 0
+
+  const statusLabel: Record<string, string> = {
+    PAID:    t.debts.paid,
+    UNPAID:  t.debts.unpaid,
+    PARTIAL: t.debts.partial,
+    OVERDUE: t.debts.overdue,
+  }
+
+  return (
+    <div className={clsx('card transition-colors', debt.status === 'OVERDUE' && 'border-orange-500/20')}>
+      <div className="flex items-start gap-3">
+        {/* Icon */}
+        <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-sm',
+          debt.status === 'PAID'    ? 'bg-jade/10 text-jade' :
+          debt.status === 'OVERDUE' ? 'bg-orange-400/10 text-orange-400' :
+          debt.status === 'PARTIAL' ? 'bg-yellow-400/10 text-yellow-400' :
+                                      'bg-rose/10 text-rose')}>
+          {debt.status === 'PAID' ? <CheckCircle size={18} /> : <TrendingDown size={18} />}
+        </div>
+
+        {/* Main info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold">{debt.customerName}</span>
+            {statusBadge(debt.status, statusLabel[debt.status] ?? debt.status)}
+            {daysOver > 0 && (
+              <span className="text-xs text-orange-400 flex items-center gap-0.5">
+                <AlertTriangle size={10} /> {daysOver} {t.debts.daysOverdue}
+              </span>
+            )}
+          </div>
+          {debt.phone && <div className="text-xs text-muted mt-0.5">{debt.phone}</div>}
+          {debt.description && <div className="text-xs text-muted mt-0.5 truncate">{debt.description}</div>}
+
+          {/* Progress bar */}
+          {debt.status !== 'UNPAID' && (
+            <div className="mt-2 bg-surface2 rounded-full h-1.5 overflow-hidden max-w-xs">
+              <div className="h-full bg-jade transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+          )}
+        </div>
+
+        {/* Amounts */}
+        <div className="text-right shrink-0">
+          <div className="text-sm font-bold font-mono">{fmt.compact(Number(debt.amount))} {debt.currency}</div>
+          {debt.status !== 'UNPAID' && debt.status !== 'PAID' && (
+            <div className="text-xs text-rose font-mono">-{fmt.compact(remaining)} left</div>
+          )}
+          {debt.dueDate && debt.status !== 'PAID' && (
+            <div className="text-xs text-muted mt-0.5">{dayjs(debt.dueDate).format('DD MMM YYYY')}</div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 shrink-0">
+          {debt.status !== 'PAID' && (
+            <>
+              <button onClick={onPay} title={t.debts.recordPayment}
+                className="p-1.5 rounded-lg hover:bg-jade/10 text-muted hover:text-jade transition-colors">
+                <CreditCard size={14} />
+              </button>
+              <button onClick={onRemind} title="Eslatma yuborish"
+                className="p-1.5 rounded-lg hover:bg-blue-400/10 text-muted hover:text-blue-400 transition-colors">
+                <MessageSquare size={14} />
+              </button>
+            </>
+          )}
+          <button onClick={onEdit}
+            className="p-1.5 rounded-lg hover:bg-surface2 text-muted hover:text-white transition-colors">
+            <Pencil size={14} />
+          </button>
+          <button onClick={onDelete}
+            className="p-1.5 rounded-lg hover:bg-rose/10 text-muted hover:text-rose transition-colors">
+            <Trash2 size={14} />
+          </button>
+          {debt.payments?.length > 0 && (
+            <button onClick={() => setOpen(o => !o)}
+              className="p-1.5 rounded-lg hover:bg-surface2 text-muted transition-colors">
+              {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Payment history */}
+      {open && debt.payments?.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border space-y-2">
+          <p className="text-xs text-muted font-medium">{t.debts.paymentHistory}</p>
+          {debt.payments.map((p: any) => (
+            <div key={p.id} className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <Clock size={12} className="text-muted" />
+                <span className="text-muted text-xs">{dayjs(p.paidAt).format('DD MMM YYYY')}</span>
+                <span className="text-xs bg-surface2 border border-border px-1.5 rounded">{p.method}</span>
+              </div>
+              <span className="font-mono text-jade text-sm">+{fmt.compact(Number(p.amount))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
+  return (
+    <div className="card flex items-center gap-3">
+      <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', color)}>{icon}</div>
+      <div>
+        <p className="text-xs text-muted">{label}</p>
+        <p className="font-bold font-mono">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function DebtPage() {
+  const t                           = useT()
+  const qc                          = useQueryClient()
+  const [search, setSearch]         = useState('')
+  const [statusFilter, setFilter]   = useState('ALL')
+  const [modal, setModal]           = useState<'create' | 'edit' | 'pay' | 'remind' | null>(null)
+  const [selected, setSelected]     = useState<any>(null)
+  const [showAging, setShowAging]   = useState(false)
+  const [sortKey,  setSortKey]      = useState<DebtSortKey>('daysOverdue')
+  const [sortDir,  setSortDir]      = useState<SortDir2>('desc')
+
+  const toggleDebtSort = (k: DebtSortKey) => {
+    if (k === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(k); setSortDir('desc') }
+  }
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['debts', search, statusFilter],
+    queryFn:  () => debtsApi.list({ search: search || undefined, status: statusFilter === 'ALL' ? undefined : statusFilter, limit: 50 }),
+  })
+
+  const { data: summary } = useQuery<any>({
+    queryKey: ['debts-summary'],
+    queryFn:  () => debtsApi.summary(),
+    retry: false,
+  })
+
+  const remove = useMutation({
+    mutationFn: debtsApi.remove,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['debts'] }); toast.success(t.notifications.deleted) },
+    onError:   () => toast.error(t.errors.deleteFailed),
+  })
+
+  const markOverdue = useMutation({
+    mutationFn: () => debtsApi.markOverdue(),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['debts'] })
+      qc.invalidateQueries({ queryKey: ['debts-summary'] })
+      const count = res?.updated ?? res?.count ?? '?'
+      toast.success(`${count} ta qarz muddati o'tgan deb belgilandi`)
+    },
+    onError: () => toast.error('Xatolik yuz berdi'),
+  })
+
+  const rawDebts = (data as any)?.data ?? []
+
+  // ── Sort ─────────────────────────────────────────────────
+  const debts = useMemo(() => [...rawDebts].sort((a: any, b: any) => {
+    let av: any, bv: any
+    if      (sortKey === 'customerName') { av = a.customerName ?? ''; bv = b.customerName ?? '' }
+    else if (sortKey === 'amount')       { av = Number(a.amount);     bv = Number(b.amount) }
+    else if (sortKey === 'remaining')    { av = Number(a.amount) - Number(a.paid);  bv = Number(b.amount) - Number(b.paid) }
+    else if (sortKey === 'dueDate')      { av = a.dueDate ? new Date(a.dueDate).getTime() : 0; bv = b.dueDate ? new Date(b.dueDate).getTime() : 0 }
+    else if (sortKey === 'daysOverdue')  {
+      const overDays = (d: any) => d.dueDate && dayjs().isAfter(dayjs(d.dueDate)) && d.status !== 'PAID'
+        ? dayjs().diff(dayjs(d.dueDate), 'day') : 0
+      av = overDays(a); bv = overDays(b)
+    }
+    else { av = new Date(a.createdAt).getTime(); bv = new Date(b.createdAt).getTime() }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1
+    if (av > bv) return sortDir === 'asc' ?  1 : -1
+    return 0
+  }), [rawDebts, sortKey, sortDir])
+
+  // ── Aging analysis ───────────────────────────────────────
+  const aging = useMemo(() => {
+    const buckets = [
+      { label: '0–30 kun',  min: 0,   max: 30,  color: 'bg-jade',          textColor: 'text-jade'         },
+      { label: '31–60 kun', min: 30,  max: 60,  color: 'bg-yellow-400',    textColor: 'text-yellow-400'   },
+      { label: '61–90 kun', min: 60,  max: 90,  color: 'bg-orange-400',    textColor: 'text-orange-400'   },
+      { label: '90+ kun',   min: 90,  max: Infinity, color: 'bg-rose',     textColor: 'text-rose'         },
+    ]
+
+    const activeDebts = debts.filter((d: any) => d.status !== 'PAID')
+    const results = buckets.map(b => {
+      const matched = activeDebts.filter((d: any) => {
+        const created = dayjs(d.createdAt)
+        const age     = dayjs().diff(created, 'day')
+        return age >= b.min && age < b.max
+      })
+      const total = matched.reduce((s: number, d: any) => s + (Number(d.amount) - Number(d.paid)), 0)
+      return { ...b, count: matched.length, total }
+    })
+
+    const maxTotal = Math.max(...results.map(r => r.total), 1)
+    return { results, maxTotal }
+  }, [debts])
+
+  const FILTERS = [
+    { key: 'ALL',     label: t.debts.filterAll },
+    { key: 'UNPAID',  label: t.debts.filterUnpaid },
+    { key: 'PARTIAL', label: t.debts.filterPartial },
+    { key: 'PAID',    label: t.debts.filterPaid },
+    { key: 'OVERDUE', label: t.debts.filterOverdue },
+  ]
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold">{t.debts.title}</h1>
+          <p className="text-sm text-muted mt-0.5">{t.debts.subtitle}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAging(v => !v)}
+            className={clsx(
+              'flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-colors',
+              showAging ? 'border-gold bg-gold-dim text-gold' : 'border-border text-muted hover:text-fg'
+            )}
+          >
+            <BarChart2 size={14} /> Aging
+          </button>
+          <button
+            onClick={() => {
+              if (!confirm('Muddati o\'tgan barcha qarzdorlarni OVERDUE deb belgilansinmi?')) return
+              markOverdue.mutate()
+            }}
+            disabled={markOverdue.isPending}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-orange-400/40 text-orange-400 text-sm font-medium hover:bg-orange-400/10 transition-colors disabled:opacity-60"
+          >
+            {markOverdue.isPending
+              ? <><RefreshCw size={13} className="animate-spin" /> Belgilanmoqda...</>
+              : <><AlertTriangle size={13} /> Mark Overdue</>}
+          </button>
+          <button onClick={() => { setSelected(null); setModal('create') }} className="btn-primary flex items-center gap-2">
+            <Plus size={14} /> {t.debts.addDebt}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={<ReceiptText size={18} className="text-gold" />}
+          label={t.debts.totalDebt}
+          value={fmt.compact(summary?.totalRemaining ?? 0) + ' UZS'}
+          color="bg-gold-dim border border-gold/20" />
+        <StatCard icon={<AlertTriangle size={18} className="text-orange-400" />}
+          label={t.debts.overdueDebt}
+          value={fmt.compact(summary?.overdueAmount ?? 0) + ' UZS'}
+          color="bg-orange-400/10 border border-orange-400/20" />
+        <StatCard icon={<CheckCircle size={18} className="text-jade" />}
+          label={t.debts.paidDebt}
+          value={fmt.compact(summary?.totalPaid ?? 0) + ' UZS'}
+          color="bg-jade/10 border border-jade/30" />
+        <StatCard icon={<DollarSign size={18} className="text-yellow-400" />}
+          label={t.debts.partialDebt}
+          value={fmt.compact(summary?.partialAmount ?? 0) + ' UZS'}
+          color="bg-yellow-400/10 border border-yellow-400/20" />
+      </div>
+
+      {/* ── Aging Analysis ── */}
+      {showAging && (
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <BarChart2 size={15} className="text-gold" />
+            <h3 className="font-semibold text-sm">Qarz yoshi tahlili (Aging Report)</h3>
+            <span className="text-xs text-muted ml-auto">Aktiv qarzlar bo'yicha</span>
+          </div>
+          <div className="space-y-2.5">
+            {aging.results.map(bucket => (
+              <div key={bucket.label}>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className={clsx('font-medium', bucket.textColor)}>{bucket.label}</span>
+                  <div className="flex items-center gap-3 text-muted">
+                    <span>{bucket.count} ta qarz</span>
+                    <span className={clsx('font-mono font-bold', bucket.textColor)}>
+                      {fmt.compact(bucket.total)} UZS
+                    </span>
+                  </div>
+                </div>
+                <div className="h-2 bg-surface2 rounded-full overflow-hidden">
+                  <div
+                    className={clsx('h-full rounded-full transition-all duration-500', bucket.color)}
+                    style={{ width: aging.maxTotal > 0 ? `${(bucket.total / aging.maxTotal) * 100}%` : '0%' }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {aging.results.every(b => b.count === 0) && (
+            <p className="text-xs text-muted text-center py-2">Aktiv qarzlar yo'q</p>
+          )}
         </div>
       )}
 
-      {/* Payment Modal */}
-      {showPayModal && selected && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-fg">Record Payment</h2>
-              <button onClick={() => setShowPayModal(false)} className="text-muted hover:text-fg"><X size={18} /></button>
-            </div>
-            <div className="bg-surface2 rounded-lg p-3 mb-4 text-sm">
-              <p className="text-fg">{selected.customer?.name ?? selected.supplier?.name}</p>
-              <p className="text-xs text-muted mt-0.5">Remaining: <span className="text-rose font-mono">{fmt(selected.amount - (selected.paidAmount ?? 0))}</span></p>
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">Amount to pay</label>
-              <input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)} min={0}
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-fg focus:outline-none focus:border-gold/60" />
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowPayModal(false)} className="flex-1 py-2 border border-border rounded-lg text-sm text-muted hover:text-fg">Cancel</button>
-              <button onClick={() => payMut.mutate({ id: selected.id, amount: payAmount })} disabled={payMut.isPending}
-                className="flex-1 py-2 bg-jade text-bg rounded-lg text-sm font-semibold hover:bg-jade/90 disabled:opacity-50 flex items-center justify-center gap-2">
-                {payMut.isPending && <Loader2 size={14} className="animate-spin" />}
-                Confirm
-              </button>
-            </div>
-          </div>
+      {/* Filters + search */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={t.debts.searchDebts} className="input pl-9" />
         </div>
+        <div className="flex gap-1 bg-surface2 rounded-xl p-1 border border-border">
+          {FILTERS.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={clsx('px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap',
+                statusFilter === f.key ? 'bg-surface text-white shadow' : 'text-muted hover:text-white')}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sort bar */}
+      <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted">
+        <ArrowUpDown size={12} className="shrink-0" />
+        <span className="mr-1">Saralash:</span>
+        {([
+          { k: 'daysOverdue',  label: 'Muddati o\'tgan' },
+          { k: 'remaining',    label: 'Qolgan summa' },
+          { k: 'amount',       label: 'Jami summa' },
+          { k: 'dueDate',      label: 'Muddat' },
+          { k: 'customerName', label: 'Ism' },
+          { k: 'createdAt',    label: 'Sana' },
+        ] as { k: DebtSortKey; label: string }[]).map(({ k, label }) => (
+          <button key={k} onClick={() => toggleDebtSort(k)}
+            className={clsx(
+              'flex items-center gap-1 px-2.5 py-1 rounded-lg border transition-colors',
+              sortKey === k
+                ? 'border-gold/40 bg-gold/10 text-gold'
+                : 'border-border hover:text-fg hover:border-border/60'
+            )}>
+            {label}
+            {sortKey === k && (sortDir === 'asc'
+              ? <ArrowUp size={9} />
+              : <ArrowDown size={9} />)}
+          </button>
+        ))}
+        {debts.length > 0 && (
+          <span className="ml-auto text-muted/60">{debts.length} ta qarz</span>
+        )}
+      </div>
+
+      {/* List */}
+      {isLoading ? (
+        <div className="text-center py-16 text-muted">{t.common.loading}</div>
+      ) : debts.length === 0 ? (
+        <div className="text-center py-16 text-muted card">
+          <TrendingDown size={48} className="mx-auto mb-3 opacity-30" />
+          <p>{t.debts.noDebts}</p>
+          <button onClick={() => { setSelected(null); setModal('create') }} className="btn-primary mt-4 inline-flex items-center gap-2">
+            <Plus size={14} /> {t.debts.addDebt}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {debts.map((d: any) => (
+            <DebtRow key={d.id} debt={d}
+              onEdit={() => { setSelected(d); setModal('edit') }}
+              onPay={() => { setSelected(d); setModal('pay') }}
+              onRemind={() => { setSelected(d); setModal('remind') }}
+              onDelete={() => confirm(`Delete debt for ${d.customerName}?`) && remove.mutate(d.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Modals */}
+      {(modal === 'create' || modal === 'edit') && (
+        <DebtModal debt={modal === 'edit' ? selected : null}
+          onClose={() => { setModal(null); setSelected(null) }} />
+      )}
+      {modal === 'pay' && selected && (
+        <PaymentModal debt={selected} onClose={() => { setModal(null); setSelected(null) }} />
+      )}
+      {modal === 'remind' && selected && (
+        <RemindModal debt={selected} onClose={() => { setModal(null); setSelected(null) }} />
       )}
     </div>
   )
