@@ -1,12 +1,32 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { financeApi, branchesApi } from '../lib/api'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { PageHeader, Badge, EmptyState, fmt, fmtDate } from '../components/Shared'
-import { Plus, X, Loader2, Search } from 'lucide-react'
+import { Plus, X, Loader2, Search, TrendingUp, TrendingDown, Wallet, BarChart2, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import toast from 'react-hot-toast'
+import clsx from 'clsx'
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from 'recharts'
 
 const EXP_CATS = ['RENT','UTILITIES','SALARY','SUPPLIES','MAINTENANCE','MARKETING','TRANSPORT','OTHER']
-type Tab = 'expenses' | 'accounts' | 'pl'
+type Tab = 'expenses' | 'accounts' | 'pl' | 'cashflow'
+
+const CAT_COLORS: Record<string,string> = {
+  RENT:        '#c8912a', UTILITIES: '#60a5fa', SALARY:  '#3ecf8e',
+  SUPPLIES:    '#a78bfa', MARKETING: '#fb923c', TRANSPORT: '#f43f5e',
+  MAINTENANCE: '#fbbf24', OTHER:     '#6b7280',
+}
+
+const QUICK_TEMPLATES = [
+  { title: 'Ijara',        category: 'RENT',        emoji: '🏠' },
+  { title: 'Kommunal',     category: 'UTILITIES',   emoji: '💡' },
+  { title: 'Maosh',        category: 'SALARY',      emoji: '👤' },
+  { title: 'Transport',    category: 'TRANSPORT',   emoji: '🚗' },
+  { title: 'Marketing',    category: 'MARKETING',   emoji: '📢' },
+  { title: 'Ta\'mirlash',  category: 'MAINTENANCE', emoji: '🔧' },
+]
 
 interface ExpForm {
   title: string; amount: string; category: string; branchId: string; note: string; date: string
@@ -54,6 +74,37 @@ export default function FinancePage() {
     enabled: tab === 'pl',
   })
 
+  // Cash flow
+  const { data: dailyCF } = useQuery({
+    queryKey: ['finance.daily-cf', branchId],
+    queryFn:  () => financeApi.dailyCashFlow(branchId || undefined, 30),
+    enabled: tab === 'cashflow',
+    retry: false,
+  })
+  const { data: cfProjection } = useQuery({
+    queryKey: ['finance.cf-projection', branchId],
+    queryFn:  () => financeApi.cashProjection(branchId || undefined),
+    enabled: tab === 'cashflow',
+    retry: false,
+  })
+
+  // Expense category breakdown (all expenses in date range)
+  const { data: allExpenses } = useQuery({
+    queryKey: ['finance.all-exp', dateFrom, dateTo, branchId],
+    queryFn:  () => financeApi.listExpenses({ dateFrom, dateTo, branchId: branchId || undefined, limit: 500, page: 1 }),
+    enabled: tab === 'expenses',
+  })
+
+  const categoryBreakdown = useMemo(() => {
+    const items = (allExpenses?.data ?? []) as any[]
+    const map: Record<string, number> = {}
+    for (const e of items) map[e.category] = (map[e.category] ?? 0) + Number(e.amount)
+    const total = Object.values(map).reduce((s, v) => s + v, 0)
+    return Object.entries(map)
+      .map(([cat, amount]) => ({ cat, amount, pct: total > 0 ? Math.round((amount / total) * 100) : 0 }))
+      .sort((a, b) => b.amount - a.amount)
+  }, [allExpenses])
+
   const createMut = useMutation({
     mutationFn: financeApi.createExpense,
     onSuccess: () => {
@@ -93,12 +144,17 @@ export default function FinancePage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 px-6 pt-3 border-b border-border">
-        {(['expenses','accounts','pl'] as Tab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
+        {([
+          { id: 'expenses',  label: 'Expenses'  },
+          { id: 'cashflow',  label: 'Cash Flow' },
+          { id: 'pl',        label: 'P&L'       },
+          { id: 'accounts',  label: 'Accounts'  },
+        ] as { id: Tab; label: string }[]).map(({ id, label }) => (
+          <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
-              tab === t ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-fg'
+              tab === id ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-fg'
             }`}>
-            {t === 'pl' ? 'P&L' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {label}
           </button>
         ))}
       </div>
@@ -129,9 +185,148 @@ export default function FinancePage() {
 
       <div className="flex-1 overflow-auto p-6">
 
+        {/* Cash Flow Tab */}
+        {tab === 'cashflow' && (
+          <div className="space-y-5 max-w-4xl">
+            {/* Summary cards */}
+            {cfProjection && (
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Hisob balansi',   val: cfProjection.currentBalance   ?? 0, icon: Wallet,       color: 'text-gold'  },
+                  { label: '30 kun kirimi',   val: cfProjection.inflow30d        ?? 0, icon: TrendingUp,   color: 'text-jade'  },
+                  { label: '30 kun xarajat',  val: cfProjection.outflow30d       ?? 0, icon: TrendingDown, color: 'text-rose'  },
+                ].map(c => (
+                  <div key={c.label} className="bg-surface border border-border rounded-xl p-4 flex items-center gap-3">
+                    <div className={clsx('p-2 rounded-lg bg-surface2 flex-shrink-0', c.color)}>
+                      <c.icon size={18} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted">{c.label}</p>
+                      <p className={clsx('font-bold font-mono text-lg', c.color)}>{fmt(c.val)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Daily chart */}
+            <div className="bg-surface border border-border rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart2 size={15} className="text-gold" />
+                <h3 className="font-semibold text-sm">So'nggi 30 kun — kunlik cash flow</h3>
+              </div>
+              {!dailyCF ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 size={22} className="animate-spin text-gold" />
+                </div>
+              ) : (dailyCF as any[]).length === 0 ? (
+                <div className="flex items-center justify-center h-40 text-muted text-sm">
+                  Ma'lumot yo'q
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={dailyCF as any[]} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2330" />
+                    <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false}
+                      tickFormatter={(v: string) => v?.slice(5) ?? ''} />
+                    <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false}
+                      tickFormatter={(v: number) => fmt(v).replace(' UZS', '')} />
+                    <Tooltip
+                      contentStyle={{ background: '#0f1117', border: '1px solid #1f2330', borderRadius: 8 }}
+                      labelStyle={{ color: '#9ca3af', fontSize: 11 }}
+                      formatter={(val: number, name: string) => [fmt(val), name === 'inflow' ? 'Kirim' : name === 'outflow' ? 'Chiqim' : 'Saldo']}
+                    />
+                    <Bar dataKey="inflow"  name="inflow"  fill="#3ecf8e" radius={[3,3,0,0]} />
+                    <Bar dataKey="outflow" name="outflow" fill="#f43f5e" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Projection */}
+            {cfProjection?.projections && (
+              <div className="bg-surface border border-border rounded-xl p-5">
+                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                  <TrendingUp size={14} className="text-gold" /> 7 kunlik bashorat
+                </h3>
+                <div className="space-y-2">
+                  {(cfProjection.projections as any[]).slice(0, 7).map((p: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-border/40 last:border-0">
+                      <span className="text-muted text-xs">{p.date}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-jade text-xs">+{fmt(p.inflow ?? 0)}</span>
+                        <span className="text-rose text-xs">-{fmt(p.outflow ?? 0)}</span>
+                        <span className={clsx('font-mono font-bold text-sm', (p.balance ?? 0) >= 0 ? 'text-fg' : 'text-rose')}>
+                          {fmt(p.balance ?? 0)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!dailyCF && !cfProjection && (
+              <div className="text-center py-16 text-muted">
+                <Wallet size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Cash flow ma'lumotlari yuklanmoqda yoki mavjud emas</p>
+                <p className="text-xs mt-1">Backend cash flow servisini tekshiring</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Expenses Tab */}
         {tab === 'expenses' && (
           <div>
+            {/* Quick expense templates */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className="text-xs text-muted self-center">Tez qo'shish:</span>
+              {QUICK_TEMPLATES.map(tpl => (
+                <button
+                  key={tpl.title}
+                  onClick={() => {
+                    setForm({ ...emptyExp, title: tpl.title, category: tpl.category })
+                    setShowModal(true)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border bg-surface2 text-muted hover:text-gold hover:border-gold/40 rounded-lg transition-colors"
+                >
+                  {tpl.emoji} {tpl.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Category breakdown */}
+            {categoryBreakdown.length > 0 && (
+              <div className="mb-5 bg-surface border border-border rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart2 size={14} className="text-gold" />
+                  <h3 className="text-xs font-semibold text-muted uppercase tracking-wide">Kategoriya bo'yicha</h3>
+                </div>
+                <div className="space-y-2">
+                  {categoryBreakdown.map(c => (
+                    <div key={c.cat}>
+                      <div className="flex items-center justify-between text-xs mb-0.5">
+                        <span className="font-medium" style={{ color: CAT_COLORS[c.cat] ?? '#9ca3af' }}>
+                          {c.cat}
+                        </span>
+                        <div className="flex items-center gap-2 text-muted">
+                          <span>{c.pct}%</span>
+                          <span className="font-mono font-semibold text-fg">{fmt(c.amount)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-surface2 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${c.pct}%`, background: CAT_COLORS[c.cat] ?? '#6b7280' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {expLoading ? (
               <div className="flex items-center justify-center h-32"><Loader2 size={24} className="animate-spin text-gold" /></div>
             ) : expItems.length ? (
